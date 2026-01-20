@@ -1,45 +1,46 @@
-pkgname=just-talk-git
-pkgver=r0.0
+pkgname=just-talk-bin
+pkgver=0.1.0
 pkgrel=1
 pkgdesc="Speech recognition app with global hotkey support"
 arch=('x86_64')
 url="https://github.com/whoamihappyhacking/just-talk"
 license=('GPL-3.0-or-later')
 depends=(
-  'python>=3.13'
-  'python-pyqt6'
-  'python-pyqt6-webengine'
-  'python-pynput'
-)
-makedepends=(
-  'git'
-  'python-pyinstaller'
-  'python-pyinstaller-hooks-contrib'
+  'alsa-lib'
+  'at-spi2-core'
+  'atk'
+  'cairo'
+  'dbus'
+  'gcc-libs'
+  'glibc'
+  'gtk3'
+  'libdrm'
+  'libpulse'
+  'libx11'
+  'libxcomposite'
+  'libxdamage'
+  'libxext'
+  'libxfixes'
+  'libxi'
+  'libxkbcommon'
+  'libxrandr'
+  'libxrender'
+  'libxss'
+  'libxtst'
+  'mesa'
+  'nspr'
+  'nss'
+  'pango'
 )
 provides=('just-talk')
-conflicts=('just-talk')
-source=("just-talk::git+https://github.com/whoamihappyhacking/just-talk.git")
+conflicts=('just-talk' 'just-talk-git')
+_pkgfile="just-talk-linux-x86_64.tar.gz"
+source=("${_pkgfile}::https://github.com/whoamihappyhacking/just-talk/releases/download/v${pkgver}/${_pkgfile}")
 sha256sums=('SKIP')
 
-pkgver() {
-  cd "$srcdir/just-talk"
-  printf "r%s.%s" \
-    "$(git rev-list --count HEAD)" \
-    "$(git rev-parse --short HEAD)"
-}
-
-build() {
-  cd "$srcdir/just-talk"
-  export JT_BINARY_NAME=just-talk
-  export JT_ONEFILE=1
-  export JT_CONSOLE=0
-  pyinstaller just_talk.spec
-}
-
 package() {
-  cd "$srcdir/just-talk"
-  install -Dm755 "dist/just-talk" "$pkgdir/usr/bin/just-talk"
-  install -Dm644 "icon.png" "$pkgdir/usr/share/icons/hicolor/256x256/apps/just-talk.png"
-  install -Dm644 "just-talk.desktop" "$pkgdir/usr/share/applications/just-talk.desktop"
-  install -Dm644 "LICENSE" "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+  install -Dm755 "$srcdir/just-talk" "$pkgdir/usr/bin/just-talk"
+  install -Dm644 "$srcdir/icon.png" "$pkgdir/usr/share/icons/hicolor/256x256/apps/just-talk.png"
+  install -Dm644 "$srcdir/just-talk.desktop" "$pkgdir/usr/share/applications/just-talk.desktop"
+  install -Dm644 "$srcdir/LICENSE" "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
 }
