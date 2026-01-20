@@ -5,6 +5,7 @@ pkgdesc="Speech recognition app with global hotkey support"
 arch=('x86_64')
 url="https://github.com/whoamihappyhacking/just-talk"
 license=('GPL-3.0-or-later')
+options=('!debug')
 optdepends=(
   'xdotool: X11 auto-submit typing'
   'wtype: Wayland auto-submit typing'
@@ -12,7 +13,7 @@ optdepends=(
 provides=('just-talk')
 conflicts=('just-talk' 'just-talk-git')
 _pkgfile="just-talk-linux-x86_64-v${pkgver}.tar.zst"
-source=("${_pkgfile}::http://127.0.0.1:8000/${_pkgfile}")
+source=("${_pkgfile}::https://github.com/whoamihappyhacking/just-talk/releases/download/v${pkgver}/${_pkgfile}")
 sha256sums=('a0c99d67bcd232fe30f74b73c61a6638e0c880b22b399f050c2579417b0205c8')
 
 package() {

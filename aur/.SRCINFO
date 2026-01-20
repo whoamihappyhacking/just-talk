@@ -5,12 +5,13 @@ pkgbase = just-talk-bin
 	url = https://github.com/whoamihappyhacking/just-talk
 	arch = x86_64
 	license = GPL-3.0-or-later
+	options = !debug
 	optdepends = xdotool: X11 auto-submit typing
 	optdepends = wtype: Wayland auto-submit typing
 	provides = just-talk
 	conflicts = just-talk
 	conflicts = just-talk-git
-	source = just-talk-linux-x86_64-v0.1.1.tar.zst::http://127.0.0.1:8000/just-talk-linux-x86_64-v0.1.1.tar.zst
+	source = just-talk-linux-x86_64-v0.1.1.tar.zst::https://github.com/whoamihappyhacking/just-talk/releases/download/v0.1.1/just-talk-linux-x86_64-v0.1.1.tar.zst
 	sha256sums = a0c99d67bcd232fe30f74b73c61a6638e0c880b22b399f050c2579417b0205c8
 
 pkgname = just-talk-bin
