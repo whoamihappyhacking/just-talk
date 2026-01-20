@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>闪电说 - 界面复刻</title>
+    <style>
+        :root {
+            --sidebar-bg: #f5f5f5;
+            --main-bg: #ffffff;
+            --accent-color: #ff9d00;
+            --text-main: #333;
+            --text-muted: #999;
+            --border-color: #e8e8e8;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        }
+
+        body {
+            background-color: #f0f2f5;
+            display: flex;
+            height: 100vh;
+            padding: 20px;
+        }
+
+        /* 整体容器 */
+        .app-container {
+            display: flex;
+            width: 100%;
+            background: var(--main-bg);
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+            overflow: hidden;
+        }
+
+        /* 左侧侧边栏 */
+        aside {
+            width: 180px;
+            background-color: var(--sidebar-bg);
+            border-right: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+            padding: 20px 0;
+        }
+
+        .logo {
+            padding: 0 20px 30px;
+            font-size: 20px;
+            color: var(--accent-color);
+            display: flex;
+            align-items: center;
+            font-weight: bold;
+        }
+
+        .nav-item {
+            padding: 12px 20px;
+            display: flex;
+            align-items: center;
+            cursor: pointer;
+            color: var(--text-main);
+            font-size: 14px;
+            transition: 0.2s;
+        }
+
+        .nav-item.active {
+            background-color: #e6e6e6;
+            border-radius: 0 20px 20px 0;
+            margin-right: 10px;
+            font-weight: 600;
+        }
+
+        .nav-icon {
+            margin-right: 10px;
+            width: 18px;
+            text-align: center;
+        }
+
+        /* 右侧主内容区 */
+        main {
+            flex: 1;
+            padding: 30px 40px;
+            overflow-y: auto;
+        }
+
+        /* 顶部设置卡片 */
+        .settings-card {
+            background-color: #f9f9f9;
+            border-radius: 12px;
+            padding: 25px;
+            margin-bottom: 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+        }
+
+        .controls-left {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .control-row {
+            display: flex;
+            align-items: center;
+            font-size: 14px;
+            color: #666;
+        }
+
+        .toggle-switch {
+            position: relative;
+            display: inline-block;
+            width: 40px;
+            height: 20px;
+            background-color: #ccc;
+            border-radius: 20px;
+            margin-left: 10px;
+        }
+
+        .toggle-switch::after {
+            content: "";
+            position: absolute;
+            width: 16px;
+            height: 16px;
+            background: white;
+            border-radius: 50%;
+            top: 2px;
+            left: 2px;
+        }
+
+        /* 模拟键盘按键 */
+        .key {
+            background: #fff;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            padding: 2px 6px;
+            margin: 0 4px;
+            font-size: 12px;
+            box-shadow: 0 2px 0 #ddd;
+        }
+
+        /* 右侧数据标签 */
+        .stats-group {
+            display: flex;
+            gap: 12px;
+        }
+
+        .stat-box {
+            background: #fff;
+            border: 1px solid var(--border-color);
+            padding: 8px 15px;
+            border-radius: 8px;
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            color: #555;
+        }
+
+        .stat-icon {
+            margin-right: 8px;
+        }
+
+        /* 历史记录部分 */
+        .history-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .history-header h2 {
+            font-size: 22px;
+        }
+
+        .clear-btn {
+            background: #fff;
+            border: 1px solid var(--border-color);
+            padding: 6px 15px;
+            border-radius: 6px;
+            color: #666;
+            cursor: pointer;
+            font-size: 13px;
+        }
+
+        .date-label {
+            font-size: 12px;
+            color: var(--text-muted);
+            margin-bottom: 15px;
+            text-transform: uppercase;
+        }
+
+        .history-item {
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: flex-start;
+        }
+
+        .timestamp {
+            color: var(--text-muted);
+            font-size: 12px;
+            width: 80px;
+            flex-shrink: 0;
+            padding-top: 2px;
+        }
+
+        .content {
+            font-size: 14px;
+            color: var(--text-main);
+            line-height: 1.6;
+        }
+    </style>
+</head>
+<body>
+
+<div class="app-container">
+    <aside>
+        <div class="logo">⚡ 闪电说</div>
+        <div class="nav-item active">
+            <span class="nav-icon">🏠</span> 主页
+        </div>
+        </aside>
+
+    <main>
+        <div class="settings-card">
+            <div class="controls-left">
+                <div class="control-row">
+                    智能鼠标模式 ⓘ <div class="toggle-switch"></div>
+                </div>
+                <div class="control-row">
+                    按着说：按住 <span class="key">左 Ctrl</span> + <span class="key">左 Win</span> 开始录音
+                </div>
+                <div class="control-row">
+                    自由说：按一下 <span class="key">右 Alt</span> 开始/结束录音
+                </div>
+            </div>
+            
+            <div class="stats-group">
+                <div class="stat-box"><span class="stat-icon" style="color: #4a90e2;">⏱</span> 2分</div>
+                <div class="stat-box"><span class="stat-icon" style="color: #2ecc71;">📄</span> 342 字</div>
+                <div class="stat-box"><span class="stat-icon" style="color: var(--accent-color);">⚡</span> 239 字/分</div>
+            </div>
+        </div>
+
+        <div class="history-header">
+            <h2>History</h2>
+            <button class="clear-btn">清空所有</button>
+        </div>
+
+        <div class="date-label">TODAY</div>
+
+        <div class="history-list">
+            <div class="history-item">
+                <div class="timestamp">04:06 PM</div>
+                <div class="content">请过来</div>
+            </div>
+            <div class="history-item">
+                <div class="timestamp">04:05 PM</div>
+                <div class="content">可</div>
+            </div>
+            <div class="history-item">
+                <div class="timestamp">04:05 PM</div>
+                <div class="content">1924481165个信请一样。</div>
+            </div>
+            <div class="history-item">
+                <div class="timestamp">02:05 PM</div>
+                <div class="content">
+                  自由的说，其实它主要是分为三个模式，自由的说按一下按键开始录音，按一下按键结束录音。那么第二个就是按着说，有点类似于微信的按住说话。这个是当你按下的时候开始录音。然后当你松开的时候，它就会结束录音。那么第三种就是鼠标模式。当我鼠标按住中键的时候...
+                </div>
+            </div>
+        </div>
+    </main>
+</div>
+
+</body>
+</html>

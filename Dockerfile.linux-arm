@@ -1,0 +1,30 @@
+# Linux ARM (aarch64) build image for PyInstaller
+ARG TARGETPLATFORM=linux/arm64
+FROM --platform=${TARGETPLATFORM} python:3.13-slim
+
+# Switch to CN mirrors for faster downloads (python:slim uses /etc/apt/sources.list.d/debian.sources)
+RUN set -eux; \
+    if [ -f /etc/apt/sources.list ]; then \
+        sed -i 's@deb.debian.org@mirrors.tuna.tsinghua.edu.cn@g; s@security.debian.org@mirrors.tuna.tsinghua.edu.cn@g' /etc/apt/sources.list; \
+    fi; \
+    if [ -f /etc/apt/sources.list.d/debian.sources ]; then \
+        sed -i 's@deb.debian.org@mirrors.tuna.tsinghua.edu.cn@g; s@security.debian.org@mirrors.tuna.tsinghua.edu.cn@g' /etc/apt/sources.list.d/debian.sources; \
+    fi
+
+# Runtime deps for PyQt6 + build deps for evdev
+RUN set -eux; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends \
+        libx11-6 libxext6 libxcb1 libxkbcommon0 libgl1 \
+        build-essential linux-libc-dev; \
+    rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Preinstall build deps to speed up container builds
+COPY requirements.txt just_talk.spec pyproject.toml uv.lock ./
+ENV PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
+RUN pip install --no-cache-dir pyinstaller==6.18.0 && \
+    pip install --no-cache-dir -r requirements.txt
+
+CMD ["bash"]

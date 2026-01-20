@@ -1,0 +1,781 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>说了么 - 实时语音转文字</title>
+    <style>
+        :root {
+            --bg-color: #f9fafb;
+            --card-bg: #ffffff;
+            --text-main: #18181b;
+            --text-muted: #71717a;
+            --accent-black: #18181b;
+            --accent-hover: #3f3f46;
+            --border-color: #e4e4e7;
+            --success: #10b981;
+            --danger: #ef4444;
+            --radius-lg: 16px;
+            --radius-md: 12px;
+            --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+            --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            font-family: var(--font-family);
+            line-height: 1.5;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        /* 布局容器 */
+        .app-container {
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 40px 20px;
+        }
+
+        /* 顶部导航/标题 */
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            margin-bottom: 32px;
+        }
+
+        .brand-section h1 {
+            font-size: 32px;
+            font-weight: 800;
+            letter-spacing: -1px;
+            margin-bottom: 4px;
+        }
+
+        .brand-section p {
+            color: var(--text-muted);
+            font-size: 14px;
+        }
+
+        /* 状态指示器 */
+        .status-badge {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: var(--card-bg);
+            padding: 6px 12px;
+            border-radius: 100px;
+            border: 1px solid var(--border-color);
+            font-size: 13px;
+            font-weight: 500;
+            box-shadow: var(--shadow);
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background-color: #d1d5db;
+        }
+        .status-dot.active { background-color: var(--success); box-shadow: 0 0 8px var(--success); }
+
+        /* 主体网格 */
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 24px;
+        }
+
+        /* 卡片通用样式 */
+        .card {
+            background: var(--card-bg);
+            border-radius: var(--radius-lg);
+            border: 1px solid var(--border-color);
+            padding: 24px;
+            box-shadow: var(--shadow);
+            margin-bottom: 24px;
+        }
+
+        .card-title {
+            font-size: 16px;
+            font-weight: 700;
+            margin-bottom: 16px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        /* 按钮样式 */
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 10px 20px;
+            border-radius: var(--radius-md);
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            border: none;
+            gap: 8px;
+        }
+
+        .btn-primary {
+            background: var(--accent-black);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: var(--accent-hover);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+
+        .btn-primary:active { transform: translateY(0); }
+
+        .btn-primary.danger { background: var(--danger); }
+
+        .btn-ghost {
+            background: transparent;
+            color: var(--text-muted);
+            border: 1px solid var(--border-color);
+        }
+
+        .btn-ghost:hover {
+            background: #f4f4f5;
+            color: var(--text-main);
+        }
+
+        /* 统计数字 */
+        .stats-row {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 12px;
+            margin-bottom: 24px;
+        }
+
+        .stat-item {
+            text-align: center;
+            padding: 16px 12px;
+            background: #f9fafb;
+            border-radius: var(--radius-md);
+            border: 1px solid var(--border-color);
+        }
+
+        .stat-value {
+            font-size: 24px;
+            font-weight: 800;
+            display: block;
+            background: linear-gradient(135deg, var(--accent-black), var(--text-muted));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        .stat-label {
+            font-size: 11px;
+            color: var(--text-muted);
+            margin-top: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+        }
+        .stat-icon {
+            width: 14px;
+            height: 14px;
+            opacity: 0.6;
+        }
+
+        /* 历史记录 */
+        .history-list {
+            max-height: 500px;
+            overflow-y: auto;
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-md);
+        }
+
+        .history-row {
+            padding: 14px 16px;
+            border-bottom: 1px solid var(--border-color);
+            transition: background 0.2s;
+            cursor: pointer;
+        }
+
+        .history-row:last-child { border-bottom: none; }
+        .history-row:hover { background: #fcfcfc; }
+        .history-row.partial { background: #fffbeb; }
+
+        .history-time {
+            color: var(--text-muted);
+            margin-bottom: 4px;
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+        .history-time-main { font-size: 12px; }
+        .history-time-date { font-size: 10px; opacity: 0.85; }
+        .history-text { 
+            font-size: 14px; 
+            outline: none; 
+            word-break: break-all;
+        }
+
+        /* 表单控件 */
+        .form-group { margin-bottom: 16px; }
+        .form-group label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; }
+
+        input[type="text"] {
+            width: 100%;
+            padding: 10px 12px;
+            border-radius: var(--radius-md);
+            border: 1px solid var(--border-color);
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+
+        input[type="text"]:focus {
+            outline: none;
+            border-color: var(--accent-black);
+            ring: 2px rgba(24, 24, 27, 0.05);
+        }
+
+        /* 分段选择器 */
+        .segmented {
+            display: flex;
+            background: #f4f4f5;
+            padding: 4px;
+            border-radius: var(--radius-md);
+            gap: 4px;
+        }
+
+        .seg-btn {
+            flex: 1;
+            border: none;
+            padding: 10px 6px;
+            font-size: 13px;
+            font-weight: 600;
+            border-radius: 8px;
+            cursor: pointer;
+            background: transparent;
+            transition: all 0.2s;
+            color: var(--text-muted);
+        }
+
+        .seg-btn.active {
+            background: white;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            color: var(--text-main);
+        }
+
+        /* 开关控件 */
+        .switch-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 40px;
+            height: 22px;
+        }
+
+        .switch input { opacity: 0; width: 0; height: 0; }
+
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background-color: #e4e4e7;
+            transition: background-color .3s;
+            border-radius: 34px;
+        }
+
+        .slider .slider-knob {
+            position: absolute;
+            height: 16px; width: 16px;
+            left: 3px; bottom: 3px;
+            background-color: white;
+            transition: transform .3s;
+            transform: translateX(0);
+            will-change: transform;
+            border-radius: 50%;
+        }
+
+        input:checked + .slider { background-color: var(--accent-black); }
+        input:checked + .slider .slider-knob { transform: translateX(18px); }
+        .switch.is-checked .slider { background-color: var(--accent-black); }
+        .switch.is-checked .slider .slider-knob { transform: translateX(18px); }
+
+        /* 录制快捷键样式 */
+        .hotkey-input-group {
+            display: grid;
+            grid-template-columns: 1fr auto;
+            gap: 8px;
+        }
+
+        /* 滚动条 */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #e4e4e7; border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: #d1d5db; }
+
+    </style>
+</head>
+<body>
+
+<div class="app-container">
+    <header class="header">
+        <div class="brand-section">
+            <h1>说了么</h1>
+            <p>实时语音识别 · 极简办公助手</p>
+        </div>
+        <div class="status-badge">
+            <div id="status-dot" class="status-dot"></div>
+            <span id="status-text">未连接</span>
+        </div>
+    </header>
+
+    <div class="dashboard-grid">
+        <div class="main-content">
+            <div class="card">
+                <div class="card-title">控制中心</div>
+                <div class="stats-row">
+                    <div class="stat-item">
+                        <span class="stat-value" id="stat-minutes">0</span>
+                        <span class="stat-label">
+                            <svg class="stat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <circle cx="12" cy="12" r="10"></circle>
+                                <polyline points="12 6 12 12 16 14"></polyline>
+                            </svg>
+                            累计时长
+                        </span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-value" id="stat-chars">0</span>
+                        <span class="stat-label">
+                            <svg class="stat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                                <polyline points="14 2 14 8 20 8"></polyline>
+                                <line x1="16" y1="13" x2="8" y2="13"></line>
+                                <line x1="16" y1="17" x2="8" y2="17"></line>
+                                <polyline points="10 9 9 9 8 9"></polyline>
+                            </svg>
+                            累计字符
+                        </span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-value" id="stat-speed">0</span>
+                        <span class="stat-label">
+                            <svg class="stat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+                            </svg>
+                            字/分钟
+                        </span>
+                    </div>
+                </div>
+                <div style="display: flex; gap: 12px; align-items: stretch;">
+                    <button id="toggle-btn" class="btn btn-primary" style="flex: 2; height: 50px; font-size: 16px;">
+                        开始识别
+                    </button>
+                    <div style="flex: 1; display: flex; align-items: stretch;">
+                        <div class="segmented" style="width: 100%;">
+                            <button data-mode="nostream" class="seg-btn active">快速</button>
+                            <button data-mode="bidi_async" class="seg-btn">智能</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card" style="margin-bottom: 0;">
+                <div class="card-title">
+                    历史记录
+                    <button id="clear-history" class="btn btn-ghost" style="padding: 4px 12px; font-size: 12px;">清空</button>
+                </div>
+                <div id="history-list" class="history-list">
+                    </div>
+            </div>
+        </div>
+
+        <div class="side-content">
+            <div class="card">
+                <div class="card-title">热键方案</div>
+
+                <div class="form-group" style="background: #f9fafb; padding: 12px; border-radius: var(--radius-md);">
+                    <div class="switch-row" style="margin-bottom: 8px;">
+                        <span style="font-size: 13px; font-weight: 700;">按住说</span>
+                        <label class="switch">
+                            <input id="primary-enabled" type="checkbox">
+                            <span class="slider"><span class="slider-knob"></span></span>
+                        </label>
+                    </div>
+                    <div class="hotkey-input-group">
+                        <input id="primary-keys" type="text" readonly placeholder="点击录制">
+                        <button class="btn btn-primary capture-btn" data-target="primary" style="padding: 0 12px;">录制</button>
+                    </div>
+                </div>
+
+                <div class="form-group" style="background: #f9fafb; padding: 12px; border-radius: var(--radius-md);">
+                    <div class="switch-row" style="margin-bottom: 8px;">
+                        <span style="font-size: 13px; font-weight: 700;">自由说 (切换)</span>
+                        <label class="switch">
+                            <input id="freehand-enabled" type="checkbox">
+                            <span class="slider"><span class="slider-knob"></span></span>
+                        </label>
+                    </div>
+                    <div class="hotkey-input-group">
+                        <input id="freehand-keys" type="text" readonly placeholder="点击录制">
+                        <button class="btn btn-primary capture-btn" data-target="freehand" style="padding: 0 12px;">录制</button>
+                    </div>
+                </div>
+
+                <div class="form-group" style="padding: 0 12px;">
+                    <div class="switch-row" style="margin-bottom: 8px;">
+                        <span style="font-size: 13px; font-weight: 600;">鼠标中键</span>
+                        <label class="switch">
+                            <input id="mouse-enabled" type="checkbox">
+                            <span class="slider"><span class="slider-knob"></span></span>
+                        </label>
+                    </div>
+                    <div class="segmented" style="margin-top: 8px;">
+                        <button data-target="mouse" data-mode="hold" class="seg-btn">按住</button>
+                        <button data-target="mouse" data-mode="toggle" class="seg-btn">切换</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">连接配置</div>
+                <div class="form-group">
+                    <label>App ID</label>
+                    <input id="app-id" type="text" placeholder="输入 ID">
+                </div>
+                <div class="form-group">
+                    <label>Access Token</label>
+                    <input id="access-token" type="text" placeholder="输入 Token">
+                </div>
+                <div class="switch-row">
+                    <span style="font-size: 13px; font-weight: 600;">传输压缩 (Gzip)</span>
+                    <label class="switch">
+                        <input id="use-gzip" type="checkbox">
+                        <span class="slider"><span class="slider-knob"></span></span>
+                    </label>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="qrc:///qtwebchannel/qwebchannel.js"></script>
+<script>
+ let controller = null;
+ let historyData = [];
+ let activeCaptureTarget = null;
+
+ function $(id) { return document.getElementById(id); }
+
+ // UI 更新函数
+ function updateStatus() {
+   if (!controller) return;
+   const connected = controller.isConnected;
+   const busy = controller.isSending || controller.isConnecting;
+   
+   $("status-text").textContent = controller.statusText || (connected ? "就绪" : "未连接");
+   $("status-dot").className = "status-dot" + (connected ? " active" : "");
+   
+   const btn = $("toggle-btn");
+   btn.textContent = busy ? "停止识别" : "开始识别";
+   btn.classList.toggle("danger", busy);
+ }
+
+ function updateStats() {
+   if (!controller) return;
+   $("stat-minutes").textContent = controller.statsDurationText || controller.statsMinutes;
+   $("stat-chars").textContent = controller.statsChars;
+   $("stat-speed").textContent = controller.statsSpeed;
+ }
+
+ function updateForms() {
+   if (!controller) return;
+   $("app-id").value = controller.appId || "";
+   $("access-token").value = controller.accessToken || "";
+   $("use-gzip").checked = !!controller.useGzip;
+
+   // 模式切换
+   document.querySelectorAll(".seg-btn[data-mode]").forEach(btn => {
+     if (!btn.dataset.target) {
+       btn.classList.toggle("active", btn.dataset.mode === controller.mode);
+     }
+   });
+
+   // 按住说热键 (主热键固定为按住模式)
+   $("primary-keys").value = controller.primaryHotkeyText || "";
+   $("primary-enabled").checked = !!controller.primaryHotkeyEnabled;
+
+   // 自由说热键 (固定为切换模式)
+   $("freehand-keys").value = controller.freehandHotkeyText || "";
+   $("freehand-enabled").checked = !!controller.freehandHotkeyEnabled;
+
+   // 鼠标中键
+   $("mouse-enabled").checked = !!controller.mouseModeEnabled;
+   setSegActive("mouse", controller.mouseHotkeyMode);
+   syncSwitches();
+ }
+
+ function setSegActive(target, mode) {
+   document.querySelectorAll(`.seg-btn[data-target='${target}']`).forEach(btn => {
+     btn.classList.toggle("active", btn.dataset.mode === mode);
+   });
+ }
+
+ function splitTimestamp(ts) {
+   const raw = (ts || "").trim();
+   if (!raw) return { time: "--:--:--", date: "" };
+   const parts = raw.split(" ");
+   if (parts.length < 2) return { time: raw, date: "" };
+   return { date: parts[0], time: parts.slice(1).join(" ") };
+ }
+
+ // 历史记录渲染
+ function renderHistory(list) {
+   console.log('=== renderHistory called ===');
+   console.log('Raw list:', list);
+   console.log('List type:', typeof list, 'IsArray:', Array.isArray(list));
+
+   historyData = Array.isArray(list) ? list.slice() : [];
+   console.log('Processed historyData:', historyData);
+   console.log('historyData length:', historyData.length);
+   const container = $("history-list");
+   container.innerHTML = "";
+   
+   if (historyData.length === 0) {
+     container.innerHTML = '<div style="padding:40px; text-align:center; color:#a1a1aa; font-size:13px;">暂无识别记录</div>';
+     return;
+   }
+
+   historyData.forEach((item, idx) => {
+     console.log(`Item ${idx}:`, item);
+     console.log(`  - timestamp: "${item.timestamp}"`);
+     console.log(`  - text: "${item.text}"`);
+     console.log(`  - partial: ${item.partial}`);
+
+     const row = document.createElement("div");
+     row.className = "history-row";
+     if (item.partial) row.classList.add("partial");
+
+     const ts = splitTimestamp(item.timestamp);
+     row.innerHTML = `
+       <div class="history-time">
+         <div class="history-time-main">${ts.time || "--:--:--"}</div>
+         ${ts.date ? `<div class="history-time-date">${ts.date}</div>` : ""}
+       </div>
+       <div class="history-text" contenteditable="true">${item.text || ""}</div>
+     `;
+
+     const textEl = row.querySelector(".history-text");
+     textEl.addEventListener("blur", () => {
+       const val = textEl.textContent.trim();
+       historyData[idx].text = val;
+       controller && controller.updateHistoryText(idx, val);
+     });
+
+     row.addEventListener("click", (e) => {
+       if (e.target !== textEl) copyText(item.text);
+     });
+
+     container.appendChild(row);
+   });
+   container.scrollTop = 0;
+ }
+
+ async function copyText(text) {
+   if (!text) return;
+   try {
+     await navigator.clipboard.writeText(text);
+   } catch (err) {
+     if (controller && controller.copyText) controller.copyText(text);
+   }
+ }
+
+ function setCaptureActive(target) {
+   activeCaptureTarget = target || null;
+   document.querySelectorAll(".capture-btn").forEach(btn => {
+     const isActive = !!target && btn.dataset.target === target;
+     btn.classList.toggle("active", isActive);
+     btn.textContent = isActive ? "录制中..." : "录制";
+   });
+ }
+
+ function cancelCapture() {
+   if (!activeCaptureTarget) return;
+   if (controller && controller.cancelHotkeyCapture) {
+     controller.cancelHotkeyCapture();
+   }
+   setCaptureActive(null);
+ }
+
+ function syncSwitches() {
+   document.querySelectorAll(".switch").forEach((el) => {
+     const input = el.querySelector("input[type='checkbox']");
+     if (!input) return;
+     el.classList.toggle("is-checked", !!input.checked);
+   });
+ }
+
+ // 事件绑定
+ function bindInputs() {
+   $("toggle-btn").addEventListener("click", () => controller && controller.toggleRecognition());
+   $("clear-history").addEventListener("click", () => controller && controller.clearHistory());
+
+   $("app-id").addEventListener("change", (e) => controller && (controller.appId = e.target.value));
+   $("access-token").addEventListener("change", (e) => controller && (controller.accessToken = e.target.value));
+   $("use-gzip").addEventListener("change", (e) => controller && (controller.useGzip = e.target.checked));
+
+   // 全局模式切换
+   document.querySelectorAll(".seg-btn[data-mode]").forEach(btn => {
+     if (!btn.dataset.target) {
+       btn.addEventListener("click", () => {
+         const mode = btn.dataset.mode;
+         controller && (controller.mode = mode);
+       });
+     }
+   });
+
+   $("primary-enabled").addEventListener("change", (e) => controller && (controller.primaryHotkeyEnabled = e.target.checked));
+   $("freehand-enabled").addEventListener("change", (e) => controller && (controller.freehandHotkeyEnabled = e.target.checked));
+   $("mouse-enabled").addEventListener("change", (e) => controller && (controller.mouseModeEnabled = e.target.checked));
+
+   // 鼠标中键模式切换
+   document.querySelectorAll(".seg-btn[data-target='mouse']").forEach(btn => {
+     btn.addEventListener("click", () => {
+       const {mode} = btn.dataset;
+       if (controller) controller.mouseHotkeyMode = mode;
+     });
+   });
+
+   // 快捷键录制按钮
+   document.querySelectorAll(".capture-btn").forEach(btn => {
+     btn.addEventListener("click", (e) => {
+       e.stopPropagation();
+       if (!controller) return;
+       setCaptureActive(btn.dataset.target);
+       controller.startHotkeyCapture(btn.dataset.target);
+     });
+   });
+
+   document.querySelectorAll(".switch input[type='checkbox']").forEach(input => {
+     input.addEventListener("change", syncSwitches);
+   });
+   syncSwitches();
+   document.addEventListener("click", (e) => {
+     if (!activeCaptureTarget) return;
+     if (e.target.closest(".capture-btn")) return;
+     cancelCapture();
+   });
+ }
+
+ function onHotkeyCaptured(target, combo) {
+   setCaptureActive(null);
+   updateForms();
+ }
+
+ // Qt 信道初始化
+ function bindSignals() {
+   if (!controller) return;
+   const signals = [
+     'statusTextChanged', 'isConnectingChanged', 'isSendingChanged',
+     'isConnectedChanged', 'statsChanged', 'modeChanged',
+     'appIdChanged', 'accessTokenChanged', 'useGzipChanged',
+     'primaryHotkeyTextChanged', 'primaryHotkeyEnabledChanged',
+     'freehandHotkeyTextChanged', 'freehandHotkeyEnabledChanged',
+     'mouseHotkeyModeChanged', 'mouseModeEnabledChanged'
+   ];
+
+   signals.forEach(sig => {
+     if (controller[sig]) {
+       controller[sig].connect(() => {
+         updateStatus();
+         updateStats();
+         updateForms();
+       });
+     }
+   });
+
+   controller.historyReset.connect((jsonStr) => {
+     try {
+       const list = JSON.parse(jsonStr);
+       renderHistory(list);
+     } catch (e) {
+       console.error('[ERROR] Failed to parse historyReset JSON:', e, jsonStr);
+     }
+   });
+   controller.historyRowInserted.connect((idx, jsonStr) => {
+     console.log('[DEBUG] historyRowInserted', idx, jsonStr);
+     try {
+       const item = JSON.parse(jsonStr);
+       console.log('[DEBUG] Parsed item:', item);
+       historyData.splice(idx, 0, item);
+       renderHistory(historyData.slice()); // 传递副本触发渲染
+     } catch (e) {
+       console.error('[ERROR] Failed to parse historyRowInserted JSON:', e, jsonStr);
+     }
+   });
+   controller.historyRowUpdated.connect((idx, jsonStr) => {
+     console.log('[DEBUG] historyRowUpdated', idx, jsonStr);
+     try {
+       const item = JSON.parse(jsonStr);
+       console.log('[DEBUG] Parsed item:', item);
+       if (idx >= 0 && idx < historyData.length) {
+         historyData[idx] = item;
+         renderHistory(historyData.slice()); // 传递副本触发渲染
+       } else {
+         console.warn('[DEBUG] Invalid index for historyRowUpdated:', idx, 'length:', historyData.length);
+       }
+     } catch (e) {
+       console.error('[ERROR] Failed to parse historyRowUpdated JSON:', e, jsonStr);
+     }
+   });
+   controller.historyRowRemoved.connect((idx) => {
+     historyData.splice(idx, 1);
+     renderHistory(historyData);
+   });
+   controller.hotkeyCaptured.connect(onHotkeyCaptured);
+ }
+
+ function init() {
+   if (window.qt && window.qt.webChannelTransport) {
+     new QWebChannel(qt.webChannelTransport, (channel) => {
+       controller = channel.objects.controller;
+       bindSignals();
+       bindInputs();
+       updateStatus();
+       updateStats();
+       updateForms();
+       controller.historySnapshot((jsonStr) => {
+         try {
+           const list = JSON.parse(jsonStr);
+           renderHistory(list);
+         } catch (e) {
+           console.error('[ERROR] Failed to parse historySnapshot JSON:', e, jsonStr);
+           renderHistory([]);
+         }
+       });
+     });
+   } else {
+     // 预览模式（非嵌入 Qt 时）
+     bindInputs();
+     renderHistory([]);
+   }
+ }
+
+ document.addEventListener("DOMContentLoaded", init);
+</script>
+
+</body>
+</html>

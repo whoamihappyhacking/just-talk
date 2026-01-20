@@ -1,0 +1,15 @@
+[project]
+name = "just-talk"
+version = "0.1.0"
+description = "Speech recognition app with global hotkey support"
+requires-python = ">=3.13"
+dependencies = [
+    "pyqt6>=6.4.0",
+    "PyQt6-WebEngine>=6.4.0",
+    "pynput>=1.7.6",
+]
+
+[project.optional-dependencies]
+build = [
+    "pyinstaller>=6.8.0",
+]

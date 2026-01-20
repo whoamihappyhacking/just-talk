@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>录音指示器复刻</title>
+    <style>
+        :root {
+            --bg-color: #000;
+            --dot-color: #fff;
+            --bar-color: #fff;
+            --red-btn: #eb4d3d;
+            --green-btn: #2ecc71;
+        }
+
+        body {
+            background-color: #1a1a1a;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        }
+
+        .container {
+            display: flex;
+            flex-direction: column;
+            gap: 40px;
+            align-items: center;
+        }
+
+        /* 基础胶囊样式 */
+        .capsule {
+            background-color: var(--bg-color);
+            border-radius: 100px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            overflow: hidden;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+        }
+
+        /* 1. 处理中模式 (Processing) */
+        .mode-processing {
+            width: 120px;
+            height: 50px;
+            gap: 6px;
+        }
+
+        .dot {
+            width: 6px;
+            height: 6px;
+            background-color: var(--dot-color);
+            border-radius: 50%;
+            opacity: 0.3;
+            animation: pulse 1.5s infinite;
+        }
+
+        .dot:nth-child(2) { animation-delay: 0.2s; }
+        .dot:nth-child(3) { animation-delay: 0.4s; }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 0.3; transform: scale(1); }
+            50% { opacity: 1; transform: scale(1.2); }
+        }
+
+        /* 2. 按住录音模式 (Recording) */
+        .mode-recording {
+            width: 120px;
+            height: 50px;
+            gap: 3px;
+        }
+
+        /* 3. 自由录音模式 (Free Recording) */
+        .mode-free {
+            width: 220px;
+            height: 50px;
+            justify-content: space-between;
+            padding: 0 10px;
+        }
+
+        /* 波形动画 */
+        .waveform {
+            display: flex;
+            align-items: center;
+            gap: 3px;
+            height: 20px;
+        }
+
+        .bar {
+            width: 3px;
+            background-color: var(--bar-color);
+            border-radius: 2px;
+            animation: wave 0.6s ease-in-out infinite alternate;
+        }
+
+        @keyframes wave {
+            from { height: 4px; }
+            to { height: 20px; }
+        }
+
+        /* 按钮样式 */
+        .icon-btn {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            border: none;
+            color: white;
+            font-weight: bold;
+            font-size: 16px;
+            transition: transform 0.1s;
+        }
+
+        .icon-btn:active { transform: scale(0.9); }
+        .cancel-btn { background-color: var(--red-btn); }
+        .confirm-btn { background-color: var(--green-btn); }
+
+        /* 辅助说明 */
+        .label {
+            color: #888;
+            font-size: 14px;
+            margin-bottom: 8px;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        
+        <div>
+            <div class="label">处理中 (Processing)</div>
+            <div class="capsule mode-processing">
+                <div class="dot"></div>
+                <div class="dot"></div>
+                <div class="dot"></div>
+            </div>
+        </div>
+
+        <div>
+            <div class="label">录音中 (Recording)</div>
+            <div class="capsule mode-recording" id="waveform-container-1">
+                </div>
+        </div>
+
+        <div>
+            <div class="label">自由录音模式 (Free Mode)</div>
+            <div class="capsule mode-free">
+                <button class="icon-btn cancel-btn">✕</button>
+                <div class="waveform" id="waveform-container-2">
+                    </div>
+                <button class="icon-btn confirm-btn">✓</button>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+     function createWaveform(containerId, count) {
+       const container = document.getElementById(containerId);
+       for (let i = 0; i < count; i++) {
+         const bar = document.createElement('div');
+         bar.className = 'bar';
+         // 随机化初始高度和动画时长，让波形看起来更自然
+         const duration = 0.4 + Math.random() * 0.5;
+         const delay = Math.random() * 0.5;
+         bar.style.animationDuration = `${duration}s`;
+         bar.style.animationDelay = `-${delay}s`;
+         
+         // 模拟图片中的中间高、两边低的效果
+         const distFromCenter = Math.abs(i - (count - 1) / 2);
+         const maxHeight = 20 - (distFromCenter * 3);
+         bar.style.height = `${Math.max(4, maxHeight)}px`;
+         
+         container.appendChild(bar);
+       }
+     }
+
+     // 初始化波形
+     createWaveform('waveform-container-1', 11);
+     createWaveform('waveform-container-2', 15);
+    </script>
+</body>
+</html>
