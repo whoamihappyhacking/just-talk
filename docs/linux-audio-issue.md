@@ -16,6 +16,7 @@ PyPI 的 PyQt6 包存在以下问题：
 1. **自带独立 Qt 库**：PyQt6 包含完整的 Qt 运行时，位于 `.venv/.../PyQt6/Qt6/lib/`
 
 2. **RPATH 硬编码**：PyQt6 的 `.so` 文件通过 RPATH 硬编码了库路径
+
    ```
    $ readelf -d PyQt6/QtCore.abi3.so | grep RPATH
    RPATH: [$ORIGIN/Qt6/lib]
@@ -27,30 +28,36 @@ PyPI 的 PyQt6 包存在以下问题：
 
 ## 验证结果
 
-| 环境 | Qt 后端 | 检测到设备 |
-|------|---------|-----------|
-| 系统 Python + 系统 PyQt6 | GStreamer | 2 个麦克风 ✓ |
-| uv venv + PyPI PyQt6 | FFmpeg | 0 个设备 ✗ |
-| uv venv + QT_PLUGIN_PATH | GStreamer (加载但不工作) | 0 个设备 ✗ |
+| 环境                     | Qt 后端                  | 检测到设备   |
+| ------------------------ | ------------------------ | ------------ |
+| 系统 Python + 系统 PyQt6 | GStreamer                | 2 个麦克风 ✓ |
+| uv venv + PyPI PyQt6     | FFmpeg                   | 0 个设备 ✗   |
+| uv venv + QT_PLUGIN_PATH | GStreamer (加载但不工作) | 0 个设备 ✗   |
 
 ## 尝试过的方案
 
 ### 1. 设置 QT_PLUGIN_PATH（无效）
+
 ```bash
 export QT_PLUGIN_PATH=/usr/lib/qt6/plugins
 ```
+
 - 结果：GStreamer 插件能加载，但由于 ABI 不兼容无法正常工作
 
 ### 2. 设置 LD_LIBRARY_PATH（无效）
+
 ```bash
 export LD_LIBRARY_PATH=/usr/lib
 ```
+
 - 结果：PyQt6 的 RPATH 优先级高于 LD_LIBRARY_PATH，仍然加载自带的 Qt 库
 
 ### 3. 设置 QT_MEDIA_BACKEND（无效）
+
 ```bash
 export QT_MEDIA_BACKEND=gstreamer
 ```
+
 - 结果：能切换到 GStreamer 后端，但由于 ABI 问题仍无法检测设备
 
 ## 可行的解决方案
@@ -86,10 +93,12 @@ python -m PyInstaller just_talk.spec
 ```
 
 优点：
+
 - 自然支持 GStreamer，音频输入正常工作
 - 打包产物使用系统 Qt，与目标系统兼容性好
 
 缺点：
+
 - 需要目标机器有兼容的 Qt6 和 GStreamer
 - 不同发行版可能需要不同的打包环境
 
@@ -114,10 +123,12 @@ def _setup_gstreamer_path() -> None:
 ```
 
 优点：
+
 - 打包体积小
 - 利用系统已有的 GStreamer
 
 缺点：
+
 - 需要目标机器安装 GStreamer
 - 仍然存在 ABI 兼容性问题
 
@@ -146,24 +157,65 @@ binaries += [(p, "gstreamer-1.0") for p in gst_plugins if os.path.exists(p)]
 ```
 
 需要的最小 GStreamer 组件：
+
 - 核心库：~8.4MB (`libgst*.so`)
 - 音频插件：~736KB
 
 优点：
+
 - 完全自包含，不依赖目标系统
 
 缺点：
+
 - 包体积增加 ~10-20MB
 - 依赖链复杂，可能遗漏库
 - 仍需解决 Qt ABI 兼容问题
 
+#### B4: patchelf 移除 RPATH（推荐用于 AUR 分发）
+
+使用 patchelf 移除 PyQt6 的硬编码 RPATH，让其使用系统 Qt 库：
+
+```bash
+# 打包前或打包后执行
+find .venv/.../PyQt6 -name "*.so" -exec patchelf --remove-rpath {} \;
+
+# 或在 spec 文件中添加后处理
+```
+
+需要修改的文件：约 45 个 `.so` 文件
+
+**AUR PKGBUILD 依赖声明**：
+
+```bash
+depends=(
+    'python>=3.13'
+    'python-pyqt6'
+    'python-pyqt6-webengine'
+    'qt6-multimedia-gstreamer'
+    'gst-plugins-good'  # PulseAudio 支持
+    'python-pynput' # 这个包只有 AUR 有
+)
+```
+
+优点：
+
+- 利用系统 Qt 生态，GStreamer 自然工作
+- 包体积小
+- 系统更新 Qt 时自动受益
+
+缺点：
+
+- 依赖系统包版本兼容性
+- 仅适用于 Arch/AUR 分发
+
 ## 推荐方案
 
-| 场景 | 推荐方案 |
-|------|----------|
-| 开发调试 | 方案 A：系统 PyQt6 |
-| 发布 Linux 包 | 方案 B1：系统 PyQt6 打包 |
-| 通用二进制 | 考虑 AppImage 或 Flatpak |
+| 场景          | 推荐方案                     |
+| ------------- | ---------------------------- |
+| 开发调试      | 方案 A：系统 PyQt6           |
+| AUR 分发      | 方案 B4：patchelf + 系统依赖 |
+| 发布 Linux 包 | 方案 B1：系统 PyQt6 打包     |
+| 通用二进制    | 考虑 AppImage 或 Flatpak     |
 
 ## 相关文件
 
