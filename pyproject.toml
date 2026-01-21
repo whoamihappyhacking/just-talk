@@ -1,6 +1,6 @@
 [project]
 name = "just-talk"
-version = "0.1.2"
+version = "0.1.3"
 description = "Speech recognition app with global hotkey support"
 requires-python = ">=3.13"
 dependencies = [
