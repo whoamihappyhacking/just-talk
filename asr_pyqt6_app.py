@@ -2630,18 +2630,27 @@ class AsrController(QtCore.QObject):
         audio_inputs = QMediaDevices.audioInputs()
         if not audio_inputs:
             self._log("MIC", "No audio input devices found (Qt multimedia backend may be missing)")
-            QtWidgets.QMessageBox.critical(
-                None,
-                "错误",
+            msg = (
                 "未检测到音频输入设备。\n\n"
                 "可能原因：\n"
                 "1. 没有麦克风设备\n"
-                "2. Qt6 多媒体后端插件缺失\n\n"
-                "Linux 用户请尝试安装：\n"
-                "  sudo pacman -S qt6-multimedia qt6-multimedia-ffmpeg\n"
-                "或：\n"
-                "  sudo apt install libqt6multimedia6",
+                "2. PyPI 的 PyQt6 使用 FFmpeg 后端，不支持音频输入\n\n"
             )
+            if sys.platform.startswith("linux"):
+                msg += (
+                    "解决方案（选择其一）：\n\n"
+                    "方案1 - 使用系统 PyQt6（推荐）：\n"
+                    "  # Arch Linux\n"
+                    "  sudo pacman -S python-pyqt6 python-pyqt6-webengine\n"
+                    "  # 然后用系统 Python 运行，不用 uv/venv\n\n"
+                    " 可能需要额外通过 yay 安装 python-pynput"
+                    "方案2 - 设置环境变量：\n"
+                    "  export QT_PLUGIN_PATH=/usr/lib/qt6/plugins\n"
+                    "  # 需要安装 qt6-multimedia-gstreamer"
+                )
+            else:
+                msg += "请检查系统是否有可用的麦克风设备。"
+            QtWidgets.QMessageBox.critical(None, "错误", msg)
             return
 
         device = QMediaDevices.defaultAudioInput()
