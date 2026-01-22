@@ -99,6 +99,25 @@ except Exception:
     QAudioSource = None  # type: ignore
     QMediaDevices = None  # type: ignore
 
+_HAS_SOUNDDEVICE = False
+_sounddevice = None
+try:
+    import sounddevice as _sounddevice
+
+    _HAS_SOUNDDEVICE = True
+except Exception:
+    pass
+
+
+def _qt_audio_input_available() -> bool:
+    """Check if Qt multimedia backend can detect audio input devices."""
+    if not _HAS_QTMULTIMEDIA or QMediaDevices is None:
+        return False
+    try:
+        return len(QMediaDevices.audioInputs()) > 0
+    except Exception:
+        return False
+
 
 def _setup_frozen_qt_env() -> None:
     logger = logging.getLogger("just-talk")
@@ -1234,6 +1253,9 @@ class AsrController(QtCore.QObject):
         self._mic_in_channels = 1
         self._mic_resampler: Optional[StreamingResamplerInt16] = None
         self._audio_sent = False  # 追踪是否已发送音频数据
+        # sounddevice backend (used on Linux when Qt backend unavailable)
+        self._sd_stream = None
+        self._use_sounddevice = False
 
         self._committed_text = ""
         self._last_committed_end_time = -1
@@ -2561,40 +2583,28 @@ class AsrController(QtCore.QObject):
     def _start_mic(self) -> None:
         if self._sending or not self._connected:
             return
-        if not _HAS_QTMULTIMEDIA:
-            return
         self._show_indicator_mode(self._indicator_mode or self._primary_hotkey_mode)
 
-        # 检查是否有可用的音频输入设备
-        audio_inputs = QMediaDevices.audioInputs()
-        if not audio_inputs:
-            self._log("MIC", "No audio input devices found (Qt multimedia backend may be missing)")
-            msg = (
-                "未检测到音频输入设备。\n\n"
-                "可能原因：\n"
-                "1. 没有麦克风设备\n"
-                "2. PyPI 的 PyQt6 使用 FFmpeg 后端，不支持音频输入\n\n"
-            )
-            if sys.platform.startswith("linux"):
-                msg += (
-                    "解决方案（选择其一）：\n\n"
-                    "方案1 - 使用系统 PyQt6（推荐）：\n"
-                    "  # Arch Linux\n"
-                    "  sudo pacman -S python-pyqt6 python-pyqt6-webengine\n"
-                    "  # 然后用系统 Python 运行，不用 uv/venv\n\n"
-                    " 可能需要额外通过 yay 安装 python-pynput"
-                    "方案2 - 设置环境变量：\n"
-                    "  export QT_PLUGIN_PATH=/usr/lib/qt6/plugins\n"
-                    "  # 需要安装 qt6-multimedia-gstreamer"
-                )
-            else:
-                msg += "请检查系统是否有可用的麦克风设备。"
+        # Decide which audio backend to use
+        use_qt = _qt_audio_input_available()
+        use_sd = _HAS_SOUNDDEVICE and not use_qt
+
+        if not use_qt and not use_sd:
+            self._log("MIC", "No audio backend available")
+            msg = "未检测到可用的音频输入后端。\n\n请检查系统是否有可用的麦克风设备。"
             QtWidgets.QMessageBox.critical(None, "错误", msg)
             return
 
+        if use_sd:
+            self._start_mic_sounddevice()
+        else:
+            self._start_mic_qt()
+
+    def _start_mic_qt(self) -> None:
+        """Start microphone using Qt multimedia backend."""
+        audio_inputs = QMediaDevices.audioInputs()
         device = QMediaDevices.defaultAudioInput()
         if device is None or device.isNull():
-            # 如果默认设备无效，尝试使用第一个可用设备
             device = audio_inputs[0]
             self._log("MIC", f"Using fallback device: {device.description()}")
 
@@ -2607,8 +2617,7 @@ class AsrController(QtCore.QObject):
 
         if fmt.sampleFormat() != QAudioFormat.SampleFormat.Int16:
             QtWidgets.QMessageBox.critical(
-                None,
-                "错误",
+                None, "错误",
                 f"麦克风格式不支持（需要 Int16）。当前 sampleFormat={fmt.sampleFormat()}",
             )
             return
@@ -2617,12 +2626,50 @@ class AsrController(QtCore.QObject):
         self._mic_in_channels = int(fmt.channelCount())
         self._mic_resampler = StreamingResamplerInt16(in_rate=self._mic_in_rate, out_rate=16000)
         self._mic_buffer.clear()
+        self._use_sounddevice = False
 
         src = QAudioSource(device, fmt, self)
         io = src.start()
         io.readyRead.connect(self._on_mic_ready)  # type: ignore[attr-defined]
         self._audio_source = src
         self._audio_io = io
+        self._finalize_mic_start()
+
+    def _start_mic_sounddevice(self) -> None:
+        """Start microphone using sounddevice backend (Linux fallback)."""
+        if _sounddevice is None:
+            return
+        self._log("MIC", "Using sounddevice backend")
+        self._mic_in_rate = 16000
+        self._mic_in_channels = 1
+        self._mic_resampler = StreamingResamplerInt16(in_rate=16000, out_rate=16000)
+        self._mic_buffer.clear()
+        self._use_sounddevice = True
+
+        def audio_callback(indata, frames, time_info, status):
+            if status:
+                self._log("MIC", f"sounddevice status: {status}")
+            raw = indata.tobytes()
+            QtCore.QMetaObject.invokeMethod(
+                self, "_on_sd_audio_data",
+                QtCore.Qt.ConnectionType.QueuedConnection,
+                QtCore.Q_ARG(bytes, raw),
+            )
+
+        try:
+            self._sd_stream = _sounddevice.InputStream(
+                samplerate=16000, channels=1, dtype="int16",
+                blocksize=int(16000 * self.CHUNK_MS_DEFAULT / 1000),
+                callback=audio_callback,
+            )
+            self._sd_stream.start()
+            self._finalize_mic_start()
+        except Exception as e:
+            self._log("MIC", f"sounddevice error: {e}")
+            QtWidgets.QMessageBox.critical(None, "错误", f"无法启动麦克风: {e}")
+
+    def _finalize_mic_start(self) -> None:
+        """Common finalization after mic start."""
         self._sending = True
         self.isSendingChanged.emit()
         self._update_status_text()
@@ -2635,6 +2682,7 @@ class AsrController(QtCore.QObject):
 
     def _stop_mic_no_last(self) -> None:
         self._stop_default_limit_timer()
+        # Stop Qt audio source
         try:
             if self._audio_source is not None:
                 self._audio_source.stop()
@@ -2642,6 +2690,15 @@ class AsrController(QtCore.QObject):
             pass
         self._audio_source = None
         self._audio_io = None
+        # Stop sounddevice stream
+        try:
+            if self._sd_stream is not None:
+                self._sd_stream.stop()
+                self._sd_stream.close()
+        except Exception:
+            pass
+        self._sd_stream = None
+        self._use_sounddevice = False
         self._mic_buffer.clear()
         if self._sending:
             self._sending = False
@@ -3026,6 +3083,22 @@ class AsrController(QtCore.QObject):
             frame = build_audio_only_request(chunk, last=False, use_gzip=self._use_gzip)
             self.ws.send_binary(frame)
             self._audio_sent = True  # 标记已发送音频数据
+
+    @QtCore.pyqtSlot(bytes)
+    def _on_sd_audio_data(self, raw: bytes) -> None:
+        """Handle audio data from sounddevice backend."""
+        if not self._sending or not self._connected:
+            return
+        if not raw:
+            return
+        self._mic_buffer.extend(raw)
+        chunk_bytes = self._chunk_bytes()
+        while len(self._mic_buffer) >= chunk_bytes:
+            chunk = bytes(self._mic_buffer[:chunk_bytes])
+            del self._mic_buffer[:chunk_bytes]
+            frame = build_audio_only_request(chunk, last=False, use_gzip=self._use_gzip)
+            self.ws.send_binary(frame)
+            self._audio_sent = True
 
     def _on_connected(self) -> None:
         self._connected = True
