@@ -1,0 +1,90 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: '版本号 (例如: 0.2.0)'
+        required: true
+        type: string
+      prerelease:
+        description: '预发布版本'
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  create-release:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Validate version format
+        run: |
+          if [[ ! "${{ inputs.version }}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Error: Version must be in format X.Y.Z"
+            exit 1
+          fi
+
+      - name: Set version output
+        id: version
+        run: echo "version=${{ inputs.version }}" >> $GITHUB_OUTPUT
+
+      - name: Update pyproject.toml version
+        run: |
+          sed -i 's/^version = ".*"/version = "${{ inputs.version }}"/' pyproject.toml
+
+      - name: Update just_talk.spec version
+        run: |
+          sed -i "s/'CFBundleShortVersionString': '[^']*'/'CFBundleShortVersionString': '${{ inputs.version }}'/" just_talk.spec
+
+      - name: Commit version bump
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add pyproject.toml just_talk.spec
+          git commit -m "Release v${{ inputs.version }}" || echo "No changes to commit"
+          git push
+
+      - name: Create and push tag
+        run: |
+          git tag "v${{ inputs.version }}"
+          git push origin "v${{ inputs.version }}"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ inputs.version }}
+          name: v${{ inputs.version }}
+          draft: false
+          prerelease: ${{ inputs.prerelease }}
+          generate_release_notes: true
+
+  build-linux:
+    needs: create-release
+    uses: ./.github/workflows/build-linux.yml
+    with:
+      version: ${{ needs.create-release.outputs.version }}
+
+  build-windows:
+    needs: create-release
+    uses: ./.github/workflows/build-windows.yml
+    with:
+      version: ${{ needs.create-release.outputs.version }}
+
+  build-macos-arm64:
+    needs: create-release
+    uses: ./.github/workflows/build-macos-arm64.yml
+    with:
+      version: ${{ needs.create-release.outputs.version }}
+
+  build-macos-intel:
+    needs: create-release
+    uses: ./.github/workflows/build-macos-intel.yml
+    with:
+      version: ${{ needs.create-release.outputs.version }}
