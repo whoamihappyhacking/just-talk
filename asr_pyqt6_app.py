@@ -2670,8 +2670,19 @@ class AsrController(QtCore.QObject):
         self._mic_resampler = StreamingResamplerInt16(in_rate=self._mic_in_rate, out_rate=16000)
         self._mic_buffer.clear()
 
+        self._log("MIC", f"Creating QAudioSource: device={device.description()}, rate={fmt.sampleRate()}, channels={fmt.channelCount()}, format={fmt.sampleFormat()}")
         src = QAudioSource(device, fmt, self)
+        self._log("MIC", f"QAudioSource created, state={src.state()}, error={src.error()}")
         io = src.start()
+        self._log("MIC", f"QAudioSource started, io={io}, state={src.state()}, error={src.error()}")
+        if io is None:
+            self._log("MIC", "ERROR: QAudioSource.start() returned None!")
+            QtWidgets.QMessageBox.critical(
+                None,
+                "错误",
+                "无法启动音频录制。QAudioSource.start() 返回 None。",
+            )
+            return
         io.readyRead.connect(self._on_mic_ready)  # type: ignore[attr-defined]
         self._audio_source = src
         self._audio_io = io
@@ -3224,6 +3235,12 @@ class AsrController(QtCore.QObject):
         raw = bytes(self._audio_io.readAll())
         if not raw:
             return
+        # Debug: log first few calls
+        if not hasattr(self, '_mic_ready_count'):
+            self._mic_ready_count = 0
+        self._mic_ready_count += 1
+        if self._mic_ready_count <= 3:
+            self._log("MIC", f"_on_mic_ready called #{self._mic_ready_count}, raw bytes={len(raw)}")
         pcm16k = mic_bytes_to_pcm16le_16k_mono(
             raw,
             in_rate=self._mic_in_rate,
