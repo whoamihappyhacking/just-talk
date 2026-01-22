@@ -1,21 +1,14 @@
-name: Build macOS
+name: Build macOS Intel
 
 on:
   push:
     tags:
       - 'v*'
-  workflow_dispatch:  # 允许手动触发
+  workflow_dispatch:
 
 jobs:
   build:
-    strategy:
-      matrix:
-        include:
-          - runner: macos-latest
-            arch: arm64
-          - runner: macos-15-intel
-            arch: x64
-    runs-on: ${{ matrix.runner }}
+    runs-on: macos-15-intel
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -23,7 +16,6 @@ jobs:
       - name: Get version
         id: version
         run: |
-          # 从 tag 获取版本号，或者从 pyproject.toml 读取
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
             VERSION="${GITHUB_REF#refs/tags/v}"
           else
@@ -62,7 +54,7 @@ jobs:
 
       - name: Build with PyInstaller
         run: |
-          JT_BINARY_NAME=just-talk-macos-${{ matrix.arch }} JT_ONEFILE=0 JT_ICON=icon.icns \
+          JT_BINARY_NAME=just-talk-macos-x64 JT_ONEFILE=0 JT_ICON=icon.icns \
             uv run pyinstaller just_talk.spec
 
       - name: Create DMG
@@ -70,16 +62,16 @@ jobs:
           hdiutil create -volname "Just Talk" \
             -srcfolder "dist/Just Talk.app" \
             -ov -format UDZO \
-            "dist/just-talk-macos-${{ matrix.arch }}-${{ steps.version.outputs.version }}.dmg"
+            "dist/just-talk-macos-x64-${{ steps.version.outputs.version }}.dmg"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: just-talk-macos-${{ matrix.arch }}-${{ steps.version.outputs.version }}
-          path: dist/just-talk-macos-${{ matrix.arch }}-${{ steps.version.outputs.version }}.dmg
+          name: just-talk-macos-x64-${{ steps.version.outputs.version }}
+          path: dist/just-talk-macos-x64-${{ steps.version.outputs.version }}.dmg
 
       - name: Upload to Release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/just-talk-macos-${{ matrix.arch }}-${{ steps.version.outputs.version }}.dmg
+          files: dist/just-talk-macos-x64-${{ steps.version.outputs.version }}.dmg

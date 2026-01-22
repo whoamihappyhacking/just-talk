@@ -1,0 +1,77 @@
+name: Build macOS ARM64
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Get version
+        id: version
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            VERSION="${GITHUB_REF#refs/tags/v}"
+          else
+            VERSION=$(grep -m1 'version = ' pyproject.toml | cut -d'"' -f2)
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Install dependencies
+        run: uv sync --frozen --extra build
+
+      - name: Convert icon to icns
+        run: |
+          if [ -f icon.png ] && [ ! -f icon.icns ]; then
+            mkdir -p icon.iconset
+            sips -z 16 16 icon.png --out icon.iconset/icon_16x16.png
+            sips -z 32 32 icon.png --out icon.iconset/icon_16x16@2x.png
+            sips -z 32 32 icon.png --out icon.iconset/icon_32x32.png
+            sips -z 64 64 icon.png --out icon.iconset/icon_32x32@2x.png
+            sips -z 128 128 icon.png --out icon.iconset/icon_128x128.png
+            sips -z 256 256 icon.png --out icon.iconset/icon_128x128@2x.png
+            sips -z 256 256 icon.png --out icon.iconset/icon_256x256.png
+            sips -z 512 512 icon.png --out icon.iconset/icon_256x256@2x.png
+            sips -z 512 512 icon.png --out icon.iconset/icon_512x512.png
+            sips -z 1024 1024 icon.png --out icon.iconset/icon_512x512@2x.png
+            iconutil -c icns icon.iconset -o icon.icns
+            rm -rf icon.iconset
+          fi
+
+      - name: Build with PyInstaller
+        run: |
+          JT_BINARY_NAME=just-talk-macos-arm64 JT_ONEFILE=0 JT_ICON=icon.icns \
+            uv run pyinstaller just_talk.spec
+
+      - name: Create DMG
+        run: |
+          hdiutil create -volname "Just Talk" \
+            -srcfolder "dist/Just Talk.app" \
+            -ov -format UDZO \
+            "dist/just-talk-macos-arm64-${{ steps.version.outputs.version }}.dmg"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: just-talk-macos-arm64-${{ steps.version.outputs.version }}
+          path: dist/just-talk-macos-arm64-${{ steps.version.outputs.version }}.dmg
+
+      - name: Upload to Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/just-talk-macos-arm64-${{ steps.version.outputs.version }}.dmg
