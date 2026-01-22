@@ -102,8 +102,7 @@ except Exception:
 
 # Qt 6.5+ permission API for macOS microphone access
 try:
-    from PyQt6.QtCore import QPermission
-    from PyQt6.QtMultimedia import QMicrophonePermission
+    from PyQt6.QtCore import QMicrophonePermission, QPermission
 
     _HAS_QTPERMISSION = True
 except ImportError as e:
