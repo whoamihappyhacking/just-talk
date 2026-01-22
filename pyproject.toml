@@ -8,6 +8,8 @@ dependencies = [
     "PyQt6-WebEngine>=6.4.0",
     "pynput>=1.7.6",
     "certifi",
+    "sounddevice>=0.4.6",
+    "numpy>=1.26.0",
 ]
 
 [project.optional-dependencies]
