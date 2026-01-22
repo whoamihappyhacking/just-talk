@@ -13,7 +13,7 @@ jobs:
         include:
           - runner: macos-latest
             arch: arm64
-          - runner: macos-13
+          - runner: macos-15-large
             arch: x64
     runs-on: ${{ matrix.runner }}
     steps:
