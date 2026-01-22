@@ -7,6 +7,7 @@ dependencies = [
     "pyqt6>=6.4.0",
     "PyQt6-WebEngine>=6.4.0",
     "pynput>=1.7.6",
+    "certifi",
 ]
 
 [project.optional-dependencies]

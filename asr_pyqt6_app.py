@@ -447,7 +447,12 @@ def _ws_connect(url: str, headers: dict) -> Tuple[socket.socket, _WsFrameReader]
     raw = socket.create_connection((host, port), timeout=10)
     sock: socket.socket
     if u.scheme == "wss":
-        ctx = ssl.create_default_context()
+        # Use certifi for CA certificates (needed for PyInstaller on macOS)
+        try:
+            import certifi
+            ctx = ssl.create_default_context(cafile=certifi.where())
+        except ImportError:
+            ctx = ssl.create_default_context()
         sock = ctx.wrap_socket(raw, server_hostname=host)
     else:
         sock = raw
