@@ -11,6 +11,8 @@ hiddenimports += collect_submodules("PyQt6.QtWebEngineWidgets")
 hiddenimports += collect_submodules("PyQt6.QtWebEngineCore")
 hiddenimports += collect_submodules("PyQt6.QtWebChannel")
 hiddenimports += collect_submodules("pynput")
+hiddenimports += collect_submodules("sounddevice")
+hiddenimports += ["numpy"]
 
 name = os.environ.get("JT_BINARY_NAME", "just-talk")
 onefile = os.environ.get("JT_ONEFILE", "1") == "1"
@@ -83,7 +85,6 @@ excludes = [
     "PyQt6.QtPdf",
     "PyQt6.QtPdfWidgets",
     "matplotlib",
-    "numpy",
     "scipy",
     "pandas",
     "PIL",
