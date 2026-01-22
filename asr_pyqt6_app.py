@@ -90,6 +90,7 @@ except Exception:
     raise
 
 _HAS_QTMULTIMEDIA = False
+_HAS_QTPERMISSION = False
 try:
     from PyQt6.QtMultimedia import QAudioFormat, QAudioSource, QMediaDevices
 
@@ -98,6 +99,16 @@ except Exception:
     QAudioFormat = None  # type: ignore
     QAudioSource = None  # type: ignore
     QMediaDevices = None  # type: ignore
+
+# Qt 6.5+ permission API for macOS microphone access
+try:
+    from PyQt6.QtCore import QPermission
+    from PyQt6.QtMultimedia import QMicrophonePermission
+
+    _HAS_QTPERMISSION = True
+except ImportError:
+    QPermission = None  # type: ignore
+    QMicrophonePermission = None  # type: ignore
 
 
 def _setup_frozen_qt_env() -> None:
@@ -2564,11 +2575,50 @@ class AsrController(QtCore.QObject):
         samples = int(round(16000 * (self.CHUNK_MS_DEFAULT / 1000.0)))
         return max(2, samples * 2)
 
+    def _on_mic_permission_result(self, permission: "QPermission") -> None:
+        """macOS 麦克风权限请求回调"""
+        app = QtWidgets.QApplication.instance()
+        if app is None:
+            return
+        status = app.checkPermission(permission)
+        if status == QtCore.Qt.PermissionStatus.Granted:
+            self._log("MIC", "Microphone permission granted")
+            self._start_mic()  # 重新尝试启动麦克风
+        else:
+            self._log("MIC", f"Microphone permission not granted: {status}")
+            QtWidgets.QMessageBox.warning(
+                None,
+                "麦克风权限",
+                "麦克风权限未授予，无法进行语音识别。",
+            )
+
     def _start_mic(self) -> None:
         if self._sending or not self._connected:
             return
         if not _HAS_QTMULTIMEDIA:
             return
+
+        # macOS: 检查麦克风权限 (Qt 6.5+)
+        if sys.platform == "darwin" and _HAS_QTPERMISSION:
+            app = QtWidgets.QApplication.instance()
+            if app is not None:
+                permission = QMicrophonePermission()
+                status = app.checkPermission(permission)
+                if status == QtCore.Qt.PermissionStatus.Undetermined:
+                    # 请求权限，权限授予后重新调用 _start_mic
+                    self._log("MIC", "Requesting microphone permission on macOS")
+                    app.requestPermission(permission, self._on_mic_permission_result)
+                    return
+                elif status == QtCore.Qt.PermissionStatus.Denied:
+                    self._log("MIC", "Microphone permission denied on macOS")
+                    QtWidgets.QMessageBox.critical(
+                        None,
+                        "麦克风权限被拒绝",
+                        "请在「系统设置 → 隐私与安全性 → 麦克风」中允许本应用访问麦克风。",
+                    )
+                    return
+                # status == Granted, continue
+
         self._show_indicator_mode(self._indicator_mode or self._primary_hotkey_mode)
 
         # 检查是否有可用的音频输入设备
