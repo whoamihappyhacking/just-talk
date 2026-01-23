@@ -1286,7 +1286,7 @@ class AsrController(QtCore.QObject):
         self._access_token = self.DEFAULT_ACCESS_TOKEN
         self._start_minimized = False
         self._auto_submit = False
-        self._auto_submit_mode = "type"
+        self._auto_submit_mode = "paste"
         self._auto_submit_status = ""
         self._auto_submit_stream_last = ""
         self._auto_submit_stream_sent_text = ""
@@ -3680,9 +3680,30 @@ class LoggingWebPage(QtWebEngineCore.QWebEnginePage):
 
 def _load_app_icon() -> QtGui.QIcon:
     base_dir = getattr(sys, "_MEIPASS", os.path.dirname(__file__))
+    # macOS 优先使用 icns
+    if sys.platform == "darwin":
+        icns_path = os.path.join(base_dir, "icon.icns")
+        if os.path.exists(icns_path):
+            icon = QtGui.QIcon(icns_path)
+            if not icon.isNull():
+                return icon
     for icon_name in ("icon.ico", "icon.png"):
         icon_path = os.path.join(base_dir, icon_name)
         if os.path.exists(icon_path):
+            # 为 macOS 创建包含多个尺寸的图标
+            if sys.platform == "darwin" and icon_name == "icon.png":
+                icon = QtGui.QIcon()
+                pixmap = QtGui.QPixmap(icon_path)
+                if not pixmap.isNull():
+                    for size in (16, 32, 64, 128, 256, 512):
+                        scaled = pixmap.scaled(
+                            size, size,
+                            Qt.AspectRatioMode.KeepAspectRatio,
+                            Qt.TransformationMode.SmoothTransformation
+                        )
+                        icon.addPixmap(scaled)
+                    if not icon.isNull():
+                        return icon
             icon = QtGui.QIcon(icon_path)
             if not icon.isNull():
                 return icon

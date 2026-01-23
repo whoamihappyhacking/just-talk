@@ -3,7 +3,7 @@
 import sys
 from typing import Optional
 
-from PyQt6 import QtCore, QtWidgets
+from PyQt6 import QtCore, QtGui, QtWidgets
 from PyQt6.QtCore import Qt
 
 from hotkey.config import GlobalHotkeySettings, HotkeyConfig, MouseButtonConfig, TextSnippetConfig
@@ -482,31 +482,38 @@ class HotkeyCaptureDialog(QtWidgets.QDialog):
         self, obj: QtCore.QObject, event: QtCore.QEvent
     ) -> bool:  # noqa: N802
         """事件过滤器 - 捕获按键"""
-        if event.type() == QtCore.QEvent.Type.KeyPress:
-            key = event.key()
+        try:
+            if event.type() == QtCore.QEvent.Type.KeyPress:
+                # 在 macOS 上需要安全地获取 key
+                key = getattr(event, 'key', lambda: None)()
+                if key is None:
+                    return super().eventFilter(obj, event)
 
-            # ESC取消
-            if key == Qt.Key.Key_Escape:
-                self.reject()
+                # ESC取消
+                if key == Qt.Key.Key_Escape:
+                    self.reject()
+                    return True
+
+                # Enter确认
+                if key == Qt.Key.Key_Return or key == Qt.Key.Key_Enter:
+                    if self._captured_keys:
+                        self.accept()
+                    return True
+
+                # 转换按键
+                key_name = self._qt_key_to_name(key)
+                if key_name and key_name not in self._current_keys:
+                    self._current_keys.add(key_name)
+                    self._captured_keys = sorted(self._current_keys)
+                    self._update_preview()
+
                 return True
 
-            # Enter确认
-            if key == Qt.Key.Key_Return or key == Qt.Key.Key_Enter:
-                if self._captured_keys:
-                    self.accept()
+            elif event.type() == QtCore.QEvent.Type.KeyRelease:
                 return True
-
-            # 转换按键
-            key_name = self._qt_key_to_name(key)
-            if key_name and key_name not in self._current_keys:
-                self._current_keys.add(key_name)
-                self._captured_keys = sorted(self._current_keys)
-                self._update_preview()
-
-            return True
-
-        elif event.type() == QtCore.QEvent.Type.KeyRelease:
-            return True
+        except Exception:
+            # 忽略转换错误，让事件继续传播
+            pass
 
         return super().eventFilter(obj, event)
 

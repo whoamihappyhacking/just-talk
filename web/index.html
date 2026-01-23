@@ -822,9 +822,9 @@
    const typeRadio = $("auto-submit-mode-type");
    const pasteRadio = $("auto-submit-mode-paste");
    if (!typeRadio || !pasteRadio) return;
-   let mode = (controller && controller.autoSubmitMode) ? controller.autoSubmitMode : "type";
+   let mode = (controller && controller.autoSubmitMode) ? controller.autoSubmitMode : "paste";
    if (mode !== "type" && mode !== "paste") {
-     mode = "type";
+     mode = "paste";
    }
    typeRadio.classList.toggle("active", mode === "type");
    pasteRadio.classList.toggle("active", mode === "paste");
