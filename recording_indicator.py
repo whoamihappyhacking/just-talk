@@ -231,6 +231,10 @@ class RecordingIndicator(QtWidgets.QWidget):
         # Tool + DoNotAcceptFocus 让指示器不抢焦点、不占任务栏（跨平台）
         flags |= Qt.WindowType.Tool
         flags |= Qt.WindowType.WindowDoesNotAcceptFocus
+        if sys.platform == "darwin":
+            # ToolTip 在 macOS 下不会激活应用，避免抢焦点
+            flags &= ~Qt.WindowType.Tool
+            flags |= Qt.WindowType.ToolTip
         # X11 绕过窗口管理器仅在 X11 下可用，Wayland 下会导致窗口不显示
         if sys.platform.startswith("linux"):
             session = (QtWidgets.QApplication.instance().platformName() or "").lower()
@@ -243,6 +247,13 @@ class RecordingIndicator(QtWidgets.QWidget):
         self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.setAutoFillBackground(False)
 
+        # macOS 特定设置：确保窗口不抢焦点
+        if sys.platform == "darwin":
+            self._setup_macos_window()
+            mac_tool_attr = getattr(Qt.WidgetAttribute, "WA_MacAlwaysShowToolWindow", None)
+            if mac_tool_attr is not None:
+                self.setAttribute(mac_tool_attr)
+
         # 应用里有全局浅色 QSS（QWidget background: ...），会把指示器内部刷成白色；
         # 这里强制把指示器子树背景设为透明，让胶囊自绘的黑底生效。
         self.setObjectName("recordingIndicatorRoot")
@@ -252,6 +263,56 @@ class RecordingIndicator(QtWidgets.QWidget):
             #recordingIndicatorRoot QWidget { background: transparent; }
             """
         )
+
+    def _setup_macos_window(self) -> None:
+        """设置 macOS 窗口属性，确保不抢焦点但始终在最上层"""
+        self._macos_ns_window = None
+        # 窗口属性将在 _macos_show_without_activation 中设置
+        # 因为需要在窗口显示后才能正确获取 NSWindow
+
+    def _macos_get_ns_window(self) -> Optional[object]:
+        """尽可能从 Qt 的 winId 获取 NSWindow（避免依赖 windowNumber 匹配）"""
+        if self._macos_ns_window is not None:
+            return self._macos_ns_window
+
+        try:
+            import objc
+            from ctypes import c_void_p
+            from AppKit import NSApplication
+        except Exception:
+            return None
+
+        try:
+            win_id = int(self.winId())
+        except Exception:
+            return None
+
+        ns_window = None
+        try:
+            ns_obj = objc.objc_object(c_void_p=win_id)
+            if hasattr(ns_obj, "setLevel_") and hasattr(ns_obj, "styleMask"):
+                ns_window = ns_obj
+            elif hasattr(ns_obj, "window"):
+                ns_window = ns_obj.window()
+        except Exception:
+            ns_window = None
+
+        if ns_window is None:
+            try:
+                app = NSApplication.sharedApplication()
+                for win in app.windows():
+                    try:
+                        if win.windowNumber() == win_id:
+                            ns_window = win
+                            break
+                    except Exception:
+                        continue
+            except Exception:
+                ns_window = None
+
+        if ns_window is not None:
+            self._macos_ns_window = ns_window
+        return ns_window
 
     def _setup_x11_properties(self) -> None:
         """设置X11窗口属性"""
@@ -539,11 +600,94 @@ class RecordingIndicator(QtWidgets.QWidget):
                 self._position_with_move()
             self.show()
             self.raise_()
+        elif sys.platform == "darwin":
+            # macOS: 使用特殊方式显示窗口，避免抢焦点
+            self._macos_show_without_activation()
         else:
             self._position_with_move()
             self.show()
             self.raise_()
         QtCore.QTimer.singleShot(0, self._setup_x11_properties)
+
+    def _macos_show_without_activation(self) -> None:
+        """macOS: 显示窗口但不激活应用程序
+
+        尝试给 NSWindow 添加 NSNonactivatingPanelMask，模拟 NSPanel 的行为。
+        这是输入法候选窗口使用的技术。
+        """
+        try:
+            from AppKit import (
+                NSFloatingWindowLevel,
+                NSStatusWindowLevel,
+                NSWindowCollectionBehaviorCanJoinAllSpaces,
+                NSWindowCollectionBehaviorStationary,
+                NSWindowCollectionBehaviorIgnoresCycle,
+                NSWindowCollectionBehaviorFullScreenAuxiliary,
+            )
+            import AppKit
+
+            non_activating_mask = getattr(AppKit, "NSWindowStyleMaskNonactivatingPanel", None)
+            if non_activating_mask is None:
+                non_activating_mask = getattr(AppKit, "NSNonactivatingPanelMask", 1 << 7)
+
+            # 1. 定位窗口
+            self._position_with_move()
+
+            # 2. 强制创建原生窗口
+            self.winId()
+
+            # 3. 获取 NSWindow
+            ns_window = self._macos_get_ns_window()
+
+            if ns_window is not None:
+                self._macos_ns_window = ns_window
+
+                # 4. 关键：修改 styleMask 添加 non-activating panel 标志
+                current_mask = ns_window.styleMask()
+                ns_window.setStyleMask_(current_mask | non_activating_mask)
+
+                # 5. 如果支持 becomesKeyOnlyIfNeeded，设置它
+                if hasattr(ns_window, 'setBecomesKeyOnlyIfNeeded_'):
+                    ns_window.setBecomesKeyOnlyIfNeeded_(True)
+                if hasattr(ns_window, "setFloatingPanel_"):
+                    ns_window.setFloatingPanel_(True)
+
+                # 6. 设置窗口级别为浮动窗口
+                window_level = NSStatusWindowLevel or NSFloatingWindowLevel
+                ns_window.setLevel_(window_level)
+
+                # 7. 设置窗口行为
+                behavior = (
+                    NSWindowCollectionBehaviorCanJoinAllSpaces |
+                    NSWindowCollectionBehaviorStationary |
+                    NSWindowCollectionBehaviorIgnoresCycle |
+                    NSWindowCollectionBehaviorFullScreenAuxiliary
+                )
+                ns_window.setCollectionBehavior_(behavior)
+
+                # 8. 应用失去焦点时不隐藏窗口
+                ns_window.setHidesOnDeactivate_(False)
+
+                # 9. 避免被 Cmd+H 隐藏（如果支持）
+                if hasattr(ns_window, "setCanHide_"):
+                    ns_window.setCanHide_(False)
+
+                # 10. 使用 orderFrontRegardless 显示窗口
+                if not self.isVisible():
+                    self.show()
+                ns_window.orderFrontRegardless()
+
+            else:
+                # 回退：使用 Qt 显示
+                self.show()
+
+        except Exception as e:
+            import traceback
+            print(f"macOS show without activation error: {e}")
+            traceback.print_exc()
+            # 回退到普通显示
+            self._position_with_move()
+            self.show()
 
     def _position_with_move(self) -> None:
         screen = QtGui.QGuiApplication.screenAt(QtGui.QCursor.pos())
@@ -579,6 +723,7 @@ class RecordingIndicator(QtWidgets.QWidget):
         else:
             QtCore.QTimer.singleShot(0, self._apply_pending_position)
         QtCore.QTimer.singleShot(10, self._setup_x11_properties)
+        # macOS: showEvent 中不需要额外处理，show_at_bottom_center 已经处理了焦点恢复
 
     def keyPressEvent(self, event: QtGui.QKeyEvent) -> None:  # noqa: N802
         """处理键盘事件"""

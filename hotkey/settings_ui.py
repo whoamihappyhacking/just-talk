@@ -516,6 +516,15 @@ class HotkeyCaptureDialog(QtWidgets.QDialog):
 
             elif event.type() == QtCore.QEvent.Type.KeyRelease:
                 return True
+
+            # macOS: 处理修饰键变化事件，用于捕获纯修饰键组合 (如 Option + Command)
+            elif _IS_MACOS and event.type() == QtCore.QEvent.Type.ShortcutOverride:
+                modifiers = getattr(event, 'modifiers', lambda: Qt.KeyboardModifier.NoModifier)()
+                self._update_from_modifiers(modifiers)
+                self._captured_keys = sorted(self._current_keys)
+                self._update_preview()
+                return True
+
         except Exception:
             # 忽略转换错误，让事件继续传播
             pass
@@ -524,15 +533,24 @@ class HotkeyCaptureDialog(QtWidgets.QDialog):
 
     def _update_from_modifiers(self, modifiers: Qt.KeyboardModifier) -> None:
         """从修饰键状态更新当前按下的键"""
-        # macOS 和其他平台使用相同的映射
-        # Qt 在所有平台上报告方式一致：
-        # - ControlModifier = Control 键 (macOS) / Ctrl 键 (其他)
-        # - MetaModifier = Command 键 (macOS) / Super/Win 键 (其他)
-        # - AltModifier = Option 键 (macOS) / Alt 键 (其他)
-        if modifiers & Qt.KeyboardModifier.ControlModifier:
-            self._current_keys.add("ctrl")
-        if modifiers & Qt.KeyboardModifier.MetaModifier:
-            self._current_keys.add("super")
+        # macOS 上 Qt 的 modifier 映射与其他平台不同:
+        # - ControlModifier = Command 键 (⌘)
+        # - MetaModifier = Control 键 (⌃)
+        # 而在 Linux/Windows 上:
+        # - ControlModifier = Ctrl 键
+        # - MetaModifier = Super/Win 键
+        if _IS_MACOS:
+            # macOS: ControlModifier = Command, MetaModifier = Control
+            if modifiers & Qt.KeyboardModifier.ControlModifier:
+                self._current_keys.add("super")  # Command
+            if modifiers & Qt.KeyboardModifier.MetaModifier:
+                self._current_keys.add("ctrl")   # Control
+        else:
+            # Linux/Windows
+            if modifiers & Qt.KeyboardModifier.ControlModifier:
+                self._current_keys.add("ctrl")
+            if modifiers & Qt.KeyboardModifier.MetaModifier:
+                self._current_keys.add("super")
         if modifiers & Qt.KeyboardModifier.AltModifier:
             self._current_keys.add("alt")
         if modifiers & Qt.KeyboardModifier.ShiftModifier:
