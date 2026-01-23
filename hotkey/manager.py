@@ -1,11 +1,19 @@
 """快捷键管理器 - 协调监听器和应用状态"""
 
+import sys
 from typing import Optional
 
 from PyQt6.QtCore import QObject, pyqtSignal
 
 from hotkey.config import GlobalHotkeySettings
-from hotkey.listener import HotkeyListenerThread
+
+# 根据平台选择监听器
+_IS_MACOS = sys.platform == "darwin"
+
+if _IS_MACOS:
+    from hotkey.listener_macos import MacOSHotkeyListenerThread as ListenerThread
+else:
+    from hotkey.listener import HotkeyListenerThread as ListenerThread
 
 
 class HotkeyManager(QObject):
@@ -20,7 +28,7 @@ class HotkeyManager(QObject):
     def __init__(self, parent: Optional[QObject] = None) -> None:
         super().__init__(parent)
         self._config = GlobalHotkeySettings.get_defaults()
-        self._listener_thread: Optional[HotkeyListenerThread] = None
+        self._listener_thread: Optional[ListenerThread] = None
         self._recording_state = "idle"  # idle, recording_hold, recording_toggle
         self._active_hotkey: Optional[str] = None
         self._enabled = True
@@ -71,7 +79,7 @@ class HotkeyManager(QObject):
             return  # 已在运行
 
         try:
-            self._listener_thread = HotkeyListenerThread(self._config)
+            self._listener_thread = ListenerThread(self._config)
             self._listener_thread.hotkey_pressed.connect(self._on_hotkey_event)
             self._listener_thread.mouse_button_event.connect(self._on_mouse_event)
             self._listener_thread.snippet_triggered.connect(self._on_snippet_triggered)
