@@ -16,7 +16,7 @@ permissions:
 
 jobs:
   build:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -51,7 +51,12 @@ jobs:
             libxcb-xinerama0 \
             libxkbcommon-x11-0 \
             libegl1 \
+            libegl-dev \
             libgl1-mesa-glx \
+            libgl1-mesa-dev \
+            libgles2-mesa-dev \
+            libxcb-glx0 \
+            libxcb-glx0-dev \
             libasound2 \
             libpulse0 \
             fuse \
