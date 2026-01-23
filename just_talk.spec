@@ -126,6 +126,25 @@ a.binaries = [
     ])
 ]
 
+# Avoid bundling distro-specific OpenGL/GLX stack libs that can break on other distros.
+gl_exclude_prefixes = (
+    "libOpenGL",
+    "libGL",
+    "libGLX",
+    "libGLdispatch",
+    "libEGL",
+    "libGLESv2",
+    "libgbm",
+    "libdrm",
+    "libxcb-glx",
+)
+
+def _keep_binary(entry):
+    name = os.path.basename(entry[0])
+    return not name.startswith(gl_exclude_prefixes)
+
+a.binaries = [b for b in a.binaries if _keep_binary(b)]
+
 pyz = PYZ(a.pure, a.zipped_data)
 
 # Only strip on Linux (Wine doesn't have strip)
