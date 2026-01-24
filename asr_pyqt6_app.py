@@ -1239,6 +1239,7 @@ class AsrController(QtCore.QObject):
     historyRowInserted = QtCore.pyqtSignal(int, str)  # JSON string
     historyRowUpdated = QtCore.pyqtSignal(int, str)  # JSON string
     historyRowRemoved = QtCore.pyqtSignal(int)
+    themeChanged = QtCore.pyqtSignal()
 
     RESOURCE_ID_DEFAULT = "volc.seedasr.sauc.duration"
     CHUNK_MS_DEFAULT = 200
@@ -1342,6 +1343,7 @@ class AsrController(QtCore.QObject):
         self._wtype_path = shutil.which("wtype") if self._is_linux else None
         self._session_type = os.environ.get("XDG_SESSION_TYPE", "").strip().lower()
         self._is_wayland = self._session_type == "wayland"
+        self._theme = "auto"  # "light" / "dark" / "auto"
 
         self._session_started_at: Optional[float] = None
         self._session_elapsed_s = 0.0
@@ -1558,6 +1560,18 @@ class AsrController(QtCore.QObject):
         if value != self._hotwords:
             self._hotwords = value
             self.hotwordsChanged.emit()
+            self._save_personalization_config()
+
+    @QtCore.pyqtProperty(str, notify=themeChanged)
+    def theme(self) -> str:  # noqa: N802
+        return self._theme
+
+    @theme.setter
+    def theme(self, value: str) -> None:
+        value = str(value) if value in ("light", "dark", "auto") else "auto"
+        if value != self._theme:
+            self._theme = value
+            self.themeChanged.emit()
             self._save_personalization_config()
 
     @QtCore.pyqtProperty(bool, notify=hotkeysEnabledChanged)
@@ -2389,6 +2403,12 @@ class AsrController(QtCore.QObject):
         if hotwords is not None:
             self._hotwords = str(hotwords)
 
+        theme = settings.value("Personalization/theme", self._theme)
+        if theme is not None:
+            theme_str = str(theme).strip().lower()
+            if theme_str in ("light", "dark", "auto"):
+                self._theme = theme_str
+
     def _save_personalization_config(self) -> None:
         settings = QtCore.QSettings(self.SETTINGS_ORG, self.SETTINGS_APP)
         settings.setValue("Personalization/start_minimized", self._start_minimized)
@@ -2399,6 +2419,7 @@ class AsrController(QtCore.QObject):
         settings.setValue("Personalization/enable_ddc", self._enable_ddc)
         settings.setValue("Personalization/enable_delayed_stop", self._enable_delayed_stop)
         settings.setValue("Personalization/hotwords", self._hotwords)
+        settings.setValue("Personalization/theme", self._theme)
         settings.sync()
 
     def _using_default_credentials(self) -> bool:
