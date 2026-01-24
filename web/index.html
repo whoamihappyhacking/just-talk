@@ -509,6 +509,75 @@
             align-items: center;
         }
 
+        /* 标点符号预览 */
+        .punc-preview {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            font-weight: 600;
+            margin-bottom: 12px;
+            user-select: none;
+            padding: 16px;
+            background: #f4f4f5;
+            border-radius: var(--radius-md);
+        }
+
+        .punc-input, .punc-output {
+            flex: 0 0 180px;
+        }
+
+        .punc-input {
+            text-align: right;
+        }
+
+        .punc-output {
+            text-align: left;
+        }
+
+        [data-theme="dark"] .punc-preview {
+            background: #3f3f46;
+        }
+
+        .punc-arrow {
+            margin: 0 12px;
+            color: var(--text-muted);
+        }
+
+        .punc-clickable {
+            display: inline-block;
+            min-width: 32px;
+            padding: 4px 4px;
+            margin: 0 2px;
+            border: 2px solid var(--border-color);
+            border-radius: 6px;
+            background: var(--card-bg);
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .punc-clickable:hover {
+            border-color: var(--success);
+            color: var(--success);
+        }
+
+        .punc-clickable.disabled {
+            opacity: 0.35;
+        }
+
+        .punc-status {
+            font-size: 12px;
+            line-height: 1.8;
+        }
+
+        .status-enabled {
+            color: var(--success);
+        }
+
+        .status-disabled {
+            color: var(--text-muted);
+        }
+
         .slider-row {
             display: flex;
             align-items: center;
@@ -829,23 +898,22 @@
                 </div>
                 <div class="form-group">
                     <div class="switch-row" style="margin-bottom: 8px;">
-                        <span style="font-size: 13px; font-weight: 600;">启用标点符号</span>
-                        <label class="switch">
-                            <input id="enable-punc" type="checkbox">
-                            <span class="slider"><span class="slider-knob"></span></span>
-                        </label>
+                        <span style="font-size: 13px; font-weight: 600;">标点符号设置</span>
                     </div>
-                    <div class="hint-text">启用后会识别情绪和语义场景，最终文本带有逗号句号等标点符号</div>
-                </div>
-                <div class="form-group">
-                    <div class="switch-row" style="margin-bottom: 8px;">
-                        <span style="font-size: 13px; font-weight: 600;">删除句尾句号</span>
-                        <label class="switch">
-                            <input id="remove-trailing-period" type="checkbox">
-                            <span class="slider"><span class="slider-knob"></span></span>
-                        </label>
+                    <div class="hint-text" style="margin-bottom: 8px;">点击标点符号可切换对应设置</div>
+                    <div class="punc-preview">
+                        <div class="punc-input">
+                            <span>你好</span><span id="punc-comma" class="punc-clickable">，</span><span>世界</span><span id="punc-period" class="punc-clickable">。</span>
+                        </div>
+                        <span class="punc-arrow">=></span>
+                        <div class="punc-output">
+                            <span id="punc-result">你好，世界</span>
+                        </div>
                     </div>
-                    <div class="hint-text">自动删除识别结果末尾的句号</div>
+                    <div class="punc-status">
+                        <div><span id="punc-status-text" class="status-enabled">已启用</span> 标点符号输出</div>
+                        <div><span id="period-status-text" class="status-enabled">已启用</span> 句尾句号</div>
+                    </div>
                 </div>
                 <div class="form-group">
                     <div class="switch-row" style="margin-bottom: 8px;">
@@ -880,6 +948,24 @@
                         </label>
                     </div>
                     <div class="hint-text">识别完成后发送系统通知，显示内容摘要和时长</div>
+                </div>
+                <div class="form-group">
+                    <div class="switch-row" style="margin-bottom: 8px;">
+                        <span style="font-size: 13px; font-weight: 600;">启用标点符号</span>
+                        <label class="switch">
+                            <input id="enable-punc" type="checkbox">
+                            <span class="slider"><span class="slider-knob"></span></span>
+                        </label>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <div class="switch-row" style="margin-bottom: 8px;">
+                        <span style="font-size: 13px; font-weight: 600;">删除句尾句号</span>
+                        <label class="switch">
+                            <input id="remove-trailing-period" type="checkbox">
+                            <span class="slider"><span class="slider-knob"></span></span>
+                        </label>
+                    </div>
                 </div>
                 <div class="form-group" style="margin-bottom: 0;">
                     <label>热词设置</label>
@@ -1007,6 +1093,25 @@
    });
  }
 
+ function updatePuncUI(enablePunc, removeTrailingPeriod) {
+   // 更新标点透明度
+   $("punc-comma").classList.toggle("disabled", !enablePunc);
+   $("punc-period").classList.toggle("disabled", !enablePunc || removeTrailingPeriod);
+   // 更新预期结果
+   let result = "你好";
+   if (enablePunc) result += "，";
+   result += "世界";
+   if (enablePunc && !removeTrailingPeriod) result += "。";
+   $("punc-result").textContent = result;
+   // 更新状态文字
+   const puncStatus = $("punc-status-text");
+   const periodStatus = $("period-status-text");
+   puncStatus.textContent = enablePunc ? "已启用" : "已停用";
+   puncStatus.className = enablePunc ? "status-enabled" : "status-disabled";
+   periodStatus.textContent = removeTrailingPeriod ? "已停用" : "已启用";
+   periodStatus.className = removeTrailingPeriod ? "status-disabled" : "status-enabled";
+ }
+
  // 监听系统主题变化
  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
    if (controller && controller.theme === 'auto') {
@@ -1044,6 +1149,7 @@
    $("auto-submit").checked = !!controller.autoSubmit;
    syncAutoSubmitModeOptions();
    syncAutoSubmitAdvancedToggle();
+   updatePuncUI(controller.enablePunc, controller.removeTrailingPeriod);
    $("enable-punc").checked = !!controller.enablePunc;
    $("remove-trailing-period").checked = !!controller.removeTrailingPeriod;
    $("remove-trailing-period").disabled = !controller.enablePunc;
@@ -1254,11 +1360,27 @@
      const panel = $("auto-submit-advanced-panel");
      if (panel) panel.style.display = "none";
    });
-   $("enable-punc").addEventListener("change", (e) => {
-     if (controller) controller.enablePunc = e.target.checked;
-     $("remove-trailing-period").disabled = !e.target.checked;
+   $("punc-comma").addEventListener("click", () => {
+     if (!controller) return;
+     controller.enablePunc = !controller.enablePunc;
+     updatePuncUI(controller.enablePunc, controller.removeTrailingPeriod);
    });
-   $("remove-trailing-period").addEventListener("change", (e) => controller && (controller.removeTrailingPeriod = e.target.checked));
+   $("punc-period").addEventListener("click", () => {
+     if (!controller || !controller.enablePunc) return;
+     controller.removeTrailingPeriod = !controller.removeTrailingPeriod;
+     updatePuncUI(controller.enablePunc, controller.removeTrailingPeriod);
+   });
+   $("enable-punc").addEventListener("change", (e) => {
+     if (!controller) return;
+     controller.enablePunc = e.target.checked;
+     $("remove-trailing-period").disabled = !e.target.checked;
+     updatePuncUI(controller.enablePunc, controller.removeTrailingPeriod);
+   });
+   $("remove-trailing-period").addEventListener("change", (e) => {
+     if (!controller) return;
+     controller.removeTrailingPeriod = e.target.checked;
+     updatePuncUI(controller.enablePunc, controller.removeTrailingPeriod);
+   });
    $("enable-ddc").addEventListener("change", (e) => controller && (controller.enableDdc = e.target.checked));
    $("enable-delayed-stop").addEventListener("change", (e) => {
      if (controller) controller.enableDelayedStop = e.target.checked;
