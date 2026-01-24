@@ -3060,6 +3060,8 @@ class AsrController(QtCore.QObject):
     def _send_paste(self, text: str) -> None:
         clipboard = QtWidgets.QApplication.clipboard()
         clipboard.setText(text)
+        # Ensure clipboard data is committed before sending paste
+        QtWidgets.QApplication.processEvents()
         key_combo = self._normalize_key_combo(self._auto_submit_paste_keys)
         if not key_combo:
             key_combo = self._default_paste_keys()
@@ -3160,47 +3162,18 @@ class AsrController(QtCore.QObject):
     def _windows_send_paste(self) -> Optional[str]:
         """Send paste using Windows API. Returns method name on success, None on failure.
 
-        First tries WM_PASTE message (more reliable for text controls),
-        then falls back to SendInput Ctrl+V.
+        Uses SendInput Ctrl+V which works for most applications.
         """
         if not self._is_windows:
             return None
 
         import ctypes
         from ctypes import wintypes
+        import time
 
         user32 = ctypes.windll.user32
-        kernel32 = ctypes.windll.kernel32
 
-        # Try WM_PASTE first
-        try:
-            WM_PASTE = 0x0302
-
-            # Get focus window
-            hwnd = user32.GetFocus()
-            if not hwnd:
-                # No focus in current thread, try to get from foreground window
-                fg_hwnd = user32.GetForegroundWindow()
-                if fg_hwnd:
-                    # Attach to the foreground window's thread to get its focus
-                    thread_id = user32.GetWindowThreadProcessId(fg_hwnd, None)
-                    current_thread = kernel32.GetCurrentThreadId()
-                    if user32.AttachThreadInput(current_thread, thread_id, True):
-                        hwnd = user32.GetFocus()
-                        user32.AttachThreadInput(current_thread, thread_id, False)
-
-            if hwnd:
-                # SendMessageW returns 0 for WM_PASTE but that's not an error
-                user32.SendMessageW(hwnd, WM_PASTE, 0, 0)
-                # Small delay to ensure the target application processes the paste
-                import time
-                time.sleep(0.05)
-                self._log("WIN32", "WM_PASTE sent successfully")
-                return "wm_paste"
-        except Exception as e:
-            self._log("WIN32", f"WM_PASTE failed: {e}")
-
-        # Fall back to SendInput Ctrl+V
+        # Use SendInput Ctrl+V (works for most applications)
         try:
             # Virtual key codes
             VK_CONTROL = 0x11
@@ -3235,6 +3208,9 @@ class AsrController(QtCore.QObject):
                 inp.ki.dwFlags = KEYEVENTF_KEYUP if up else 0
                 return inp
 
+            # Small delay to ensure clipboard is ready
+            time.sleep(0.05)
+
             # Ctrl down, V down, V up, Ctrl up
             inputs = [
                 make_key_input(VK_CONTROL, False),
@@ -3245,6 +3221,7 @@ class AsrController(QtCore.QObject):
             arr = (INPUT * len(inputs))(*inputs)
             result = user32.SendInput(len(inputs), arr, ctypes.sizeof(INPUT))
             if result == len(inputs):
+                self._log("WIN32", "SendInput Ctrl+V sent successfully")
                 return "sendinput"
         except Exception as e:
             self._log("WIN32", f"SendInput failed: {e}")
