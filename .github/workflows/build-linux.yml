@@ -44,6 +44,8 @@ jobs:
             -e UV_INDEX_URL=https://pypi.org/simple \
             just-talk-linux-appimage \
             bash scripts/build-appimage.sh
+          # Fix permissions (Docker runs as root)
+          sudo chown -R $(id -u):$(id -g) dist/ AppDir/ .venv/ build/ 2>/dev/null || true
 
       - name: Generate checksums
         run: |
