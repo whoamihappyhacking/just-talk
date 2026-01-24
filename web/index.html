@@ -21,6 +21,203 @@
             --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
         }
 
+        [data-theme="dark"] {
+            --bg-color: #18181b;
+            --card-bg: #27272a;
+            --text-main: #fafafa;
+            --text-muted: #a1a1aa;
+            --accent-black: #fafafa;
+            --accent-hover: #d4d4d8;
+            --border-color: #3f3f46;
+            --success: #34d399;
+            --danger: #f87171;
+            --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3), 0 2px 4px -1px rgba(0, 0, 0, 0.2);
+        }
+
+        [data-theme="dark"] .btn-primary {
+            background: #fafafa;
+            color: #18181b;
+        }
+
+        [data-theme="dark"] .btn-primary:hover {
+            background: #e4e4e7;
+        }
+
+        [data-theme="dark"] .btn-ghost:hover {
+            background: #3f3f46;
+        }
+
+        [data-theme="dark"] .stat-item {
+            background: #3f3f46;
+        }
+
+        [data-theme="dark"] .history-row:hover {
+            background: #3f3f46;
+        }
+
+        [data-theme="dark"] .history-row.partial {
+            background: #422006;
+        }
+
+        [data-theme="dark"] input[type="text"],
+        [data-theme="dark"] select,
+        [data-theme="dark"] textarea {
+            background: #3f3f46;
+            color: var(--text-main);
+        }
+
+        [data-theme="dark"] .segmented {
+            background: #3f3f46;
+        }
+
+        [data-theme="dark"] .seg-btn.active {
+            background: #52525b;
+        }
+
+        [data-theme="dark"] .slider {
+            background-color: #52525b;
+        }
+
+        [data-theme="dark"] input:checked + .slider {
+            background-color: #fafafa;
+        }
+
+        [data-theme="dark"] .slider .slider-knob {
+            background-color: #18181b;
+        }
+
+        [data-theme="dark"] .form-group[style*="background: #f9fafb"] {
+            background: #3f3f46 !important;
+        }
+
+        [data-theme="dark"] .auto-submit-option.active {
+            background: #52525b;
+        }
+
+        [data-theme="dark"] #macos-accessibility-hint {
+            background: #422006;
+            color: #fcd34d;
+        }
+
+        [data-theme="dark"] ::-webkit-scrollbar-thumb {
+            background: #52525b;
+        }
+
+        [data-theme="dark"] ::-webkit-scrollbar-thumb:hover {
+            background: #71717a;
+        }
+
+        /* 主题切换器 */
+        .theme-switcher {
+            position: relative;
+        }
+
+        .theme-btn {
+            width: 36px;
+            height: 36px;
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            background: var(--card-bg);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+            box-shadow: var(--shadow);
+        }
+
+        .theme-btn:hover {
+            background: var(--bg-color);
+            border-color: var(--text-muted);
+        }
+
+        .theme-icon {
+            width: 18px;
+            height: 18px;
+            stroke: var(--text-main);
+        }
+
+        .theme-menu {
+            position: absolute;
+            top: 44px;
+            right: 0;
+            min-width: 140px;
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+            padding: 6px;
+            display: none;
+            z-index: 100;
+        }
+
+        .theme-menu.show {
+            display: block;
+        }
+
+        .theme-menu-item {
+            width: 100%;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 12px;
+            border: none;
+            background: transparent;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 500;
+            color: #18181b;
+            transition: background 0.15s;
+        }
+
+        [data-theme="dark"] .theme-menu-item {
+            color: #fafafa;
+        }
+
+        .theme-menu-item::selection,
+        .theme-menu-item span::selection {
+            background: #3b82f6;
+            color: #ffffff;
+        }
+
+        [data-theme="dark"] .theme-menu-item::selection,
+        [data-theme="dark"] .theme-menu-item span::selection {
+            background: #60a5fa;
+            color: #18181b;
+        }
+
+        .theme-menu-item:hover {
+            background: #f4f4f5;
+        }
+
+        .theme-menu-item.active {
+            background: #f4f4f5;
+        }
+
+        [data-theme="dark"] .theme-menu-item:hover {
+            background: #3f3f46;
+        }
+
+        [data-theme="dark"] .theme-menu-item.active {
+            background: #3f3f46;
+        }
+
+        .theme-menu-item svg {
+            width: 16px;
+            height: 16px;
+            stroke: var(--text-muted);
+            flex-shrink: 0;
+        }
+
+        .theme-menu-item.active svg {
+            stroke: var(--text-main);
+        }
+
+        [data-theme="dark"] .theme-menu {
+            box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+        }
+
         * {
             box-sizing: border-box;
             margin: 0;
@@ -312,6 +509,36 @@
             align-items: center;
         }
 
+        .slider-row {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .slider-row input[type="range"] {
+            flex: 1;
+            height: 4px;
+            -webkit-appearance: none;
+            appearance: none;
+            background: var(--border-color);
+            border-radius: 2px;
+            outline: none;
+        }
+
+        .slider-row input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 16px;
+            height: 16px;
+            background: var(--accent-black);
+            border-radius: 50%;
+            cursor: pointer;
+        }
+
+        [data-theme="dark"] .slider-row input[type="range"]::-webkit-slider-thumb {
+            background: #fafafa;
+        }
+
         .switch {
             position: relative;
             display: inline-block;
@@ -452,9 +679,64 @@
             <h1>说了么</h1>
             <p>实时语音识别 · 极简办公助手</p>
         </div>
-        <div class="status-badge">
+        <div style="display: flex; align-items: center; gap: 12px;">
+            <div class="theme-switcher">
+                <button id="theme-toggle" class="theme-btn" type="button" title="切换主题">
+                    <svg id="theme-icon-light" class="theme-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="5"></circle>
+                        <line x1="12" y1="1" x2="12" y2="3"></line>
+                        <line x1="12" y1="21" x2="12" y2="23"></line>
+                        <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+                        <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+                        <line x1="1" y1="12" x2="3" y2="12"></line>
+                        <line x1="21" y1="12" x2="23" y2="12"></line>
+                        <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+                        <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+                    </svg>
+                    <svg id="theme-icon-dark" class="theme-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:none;">
+                        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+                    </svg>
+                    <svg id="theme-icon-auto" class="theme-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:none;">
+                        <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+                        <line x1="8" y1="21" x2="16" y2="21"></line>
+                        <line x1="12" y1="17" x2="12" y2="21"></line>
+                    </svg>
+                </button>
+                <div id="theme-menu" class="theme-menu">
+                    <button class="theme-menu-item" data-theme="light">
+                        <svg viewBox="0 0 24 24" fill="none" stroke-width="2">
+                            <circle cx="12" cy="12" r="5"></circle>
+                            <line x1="12" y1="1" x2="12" y2="3"></line>
+                            <line x1="12" y1="21" x2="12" y2="23"></line>
+                            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+                            <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+                            <line x1="1" y1="12" x2="3" y2="12"></line>
+                            <line x1="21" y1="12" x2="23" y2="12"></line>
+                            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+                            <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+                        </svg>
+                        <span>浅色</span>
+                    </button>
+                    <button class="theme-menu-item" data-theme="dark">
+                        <svg viewBox="0 0 24 24" fill="none" stroke-width="2">
+                            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+                        </svg>
+                        <span>深色</span>
+                    </button>
+                    <button class="theme-menu-item" data-theme="auto">
+                        <svg viewBox="0 0 24 24" fill="none" stroke-width="2">
+                            <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+                            <line x1="8" y1="21" x2="16" y2="21"></line>
+                            <line x1="12" y1="17" x2="12" y2="21"></line>
+                        </svg>
+                        <span>跟随系统</span>
+                    </button>
+                </div>
+            </div>
+            <div class="status-badge">
             <div id="status-dot" class="status-dot"></div>
             <span id="status-text">未连接</span>
+        </div>
         </div>
     </header>
 
@@ -557,6 +839,16 @@
                 </div>
                 <div class="form-group">
                     <div class="switch-row" style="margin-bottom: 8px;">
+                        <span style="font-size: 13px; font-weight: 600;">删除句尾句号</span>
+                        <label class="switch">
+                            <input id="remove-trailing-period" type="checkbox">
+                            <span class="slider"><span class="slider-knob"></span></span>
+                        </label>
+                    </div>
+                    <div class="hint-text">自动删除识别结果末尾的句号</div>
+                </div>
+                <div class="form-group">
+                    <div class="switch-row" style="margin-bottom: 8px;">
                         <span style="font-size: 13px; font-weight: 600;">启用语义顺滑</span>
                         <label class="switch">
                             <input id="enable-ddc" type="checkbox">
@@ -574,6 +866,20 @@
                         </label>
                     </div>
                     <div class="hint-text">延迟收音会降低一点识别速度，但会提升部分快速操作场景下的识别效果</div>
+                    <div class="slider-row" style="margin-top: 10px;">
+                        <input type="range" id="delayed-stop-ms" min="0" max="500" step="10" value="150">
+                        <span id="delayed-stop-ms-value" style="min-width: 50px; text-align: right; font-size: 12px; color: var(--text-muted);">150ms</span>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <div class="switch-row" style="margin-bottom: 8px;">
+                        <span style="font-size: 13px; font-weight: 600;">识别完成通知</span>
+                        <label class="switch">
+                            <input id="notify-on-complete" type="checkbox">
+                            <span class="slider"><span class="slider-knob"></span></span>
+                        </label>
+                    </div>
+                    <div class="hint-text">识别完成后发送系统通知，显示内容摘要和时长</div>
                 </div>
                 <div class="form-group" style="margin-bottom: 0;">
                     <label>热词设置</label>
@@ -680,6 +986,34 @@
 
  function $(id) { return document.getElementById(id); }
 
+ // 主题相关函数
+ function getSystemTheme() {
+   return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+ }
+
+ function applyTheme(theme) {
+   const effectiveTheme = theme === 'auto' ? getSystemTheme() : theme;
+   document.documentElement.setAttribute('data-theme', effectiveTheme);
+ }
+
+ function updateThemeUI(theme) {
+   // 更新图标显示
+   $("theme-icon-light").style.display = theme === 'light' ? 'block' : 'none';
+   $("theme-icon-dark").style.display = theme === 'dark' ? 'block' : 'none';
+   $("theme-icon-auto").style.display = theme === 'auto' ? 'block' : 'none';
+   // 更新菜单选中状态
+   document.querySelectorAll(".theme-menu-item").forEach(item => {
+     item.classList.toggle("active", item.dataset.theme === theme);
+   });
+ }
+
+ // 监听系统主题变化
+ window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+   if (controller && controller.theme === 'auto') {
+     applyTheme('auto');
+   }
+ });
+
  // UI 更新函数
  function updateStatus() {
    if (!controller) return;
@@ -711,9 +1045,20 @@
    syncAutoSubmitModeOptions();
    syncAutoSubmitAdvancedToggle();
    $("enable-punc").checked = !!controller.enablePunc;
+   $("remove-trailing-period").checked = !!controller.removeTrailingPeriod;
+   $("remove-trailing-period").disabled = !controller.enablePunc;
    $("enable-ddc").checked = !!controller.enableDdc;
    $("enable-delayed-stop").checked = !!controller.enableDelayedStop;
+   $("delayed-stop-ms").value = controller.delayedStopMs || 150;
+   $("delayed-stop-ms-value").textContent = ($("delayed-stop-ms").value) + "ms";
+   $("delayed-stop-ms").parentElement.style.display = controller.enableDelayedStop ? "flex" : "none";
+   $("notify-on-complete").checked = !!controller.notifyOnComplete;
    $("hotwords").value = controller.hotwords || "";
+
+   // 主题同步
+   const currentTheme = controller.theme || "auto";
+   applyTheme(currentTheme);
+   updateThemeUI(currentTheme);
 
    // macOS 平台特殊处理
    const isMacOS = navigator.platform.toUpperCase().indexOf('MAC') >= 0 ||
@@ -909,10 +1254,40 @@
      const panel = $("auto-submit-advanced-panel");
      if (panel) panel.style.display = "none";
    });
-   $("enable-punc").addEventListener("change", (e) => controller && (controller.enablePunc = e.target.checked));
+   $("enable-punc").addEventListener("change", (e) => {
+     if (controller) controller.enablePunc = e.target.checked;
+     $("remove-trailing-period").disabled = !e.target.checked;
+   });
+   $("remove-trailing-period").addEventListener("change", (e) => controller && (controller.removeTrailingPeriod = e.target.checked));
    $("enable-ddc").addEventListener("change", (e) => controller && (controller.enableDdc = e.target.checked));
-   $("enable-delayed-stop").addEventListener("change", (e) => controller && (controller.enableDelayedStop = e.target.checked));
+   $("enable-delayed-stop").addEventListener("change", (e) => {
+     if (controller) controller.enableDelayedStop = e.target.checked;
+     $("delayed-stop-ms").parentElement.style.display = e.target.checked ? "flex" : "none";
+   });
+   $("delayed-stop-ms").addEventListener("input", (e) => {
+     $("delayed-stop-ms-value").textContent = e.target.value + "ms";
+     if (controller) controller.delayedStopMs = parseInt(e.target.value, 10);
+   });
+   $("notify-on-complete").addEventListener("change", (e) => controller && (controller.notifyOnComplete = e.target.checked));
    $("hotwords").addEventListener("input", (e) => controller && (controller.hotwords = e.target.value));
+
+   // 主题切换
+   $("theme-toggle").addEventListener("click", (e) => {
+     e.stopPropagation();
+     const menu = $("theme-menu");
+     menu.classList.toggle("show");
+   });
+   document.querySelectorAll(".theme-menu-item").forEach(item => {
+     item.addEventListener("click", () => {
+       const theme = item.dataset.theme;
+       if (controller) {
+         controller.theme = theme;
+         applyTheme(theme);
+         updateThemeUI(theme);
+       }
+       $("theme-menu").classList.remove("show");
+     });
+   });
 
    // 全局模式切换
    document.querySelectorAll(".seg-btn[data-mode]").forEach(btn => {
@@ -951,6 +1326,14 @@
    });
    syncSwitches();
    document.addEventListener("click", (e) => {
+     // 关闭主题菜单
+     const themeMenu = $("theme-menu");
+     const themeToggle = $("theme-toggle");
+     if (themeMenu && themeMenu.classList.contains("show")) {
+       if (!themeMenu.contains(e.target) && !themeToggle.contains(e.target)) {
+         themeMenu.classList.remove("show");
+       }
+     }
      const panel = $("auto-submit-advanced-panel");
      const toggle = $("auto-submit-advanced-toggle");
      if (panel && panel.style.display === "block") {
@@ -980,7 +1363,8 @@
      'enablePuncChanged', 'enableDdcChanged', 'enableDelayedStopChanged', 'hotwordsChanged',
      'primaryHotkeyTextChanged', 'primaryHotkeyEnabledChanged',
      'freehandHotkeyTextChanged', 'freehandHotkeyEnabledChanged',
-     'mouseHotkeyModeChanged', 'mouseModeEnabledChanged'
+     'mouseHotkeyModeChanged', 'mouseModeEnabledChanged', 'themeChanged',
+     'notifyOnCompleteChanged', 'delayedStopMsChanged', 'removeTrailingPeriodChanged'
    ];
 
    signals.forEach(sig => {
