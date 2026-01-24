@@ -16,7 +16,7 @@ permissions:
 
 jobs:
   build:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -35,100 +35,19 @@ jobs:
           fi
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.13'
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v4
-
-      - name: Install system dependencies
+      - name: Build AppImage with Docker
         run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libxcb-cursor0 \
-            libxcb-xinerama0 \
-            libxkbcommon-x11-0 \
-            libegl1 \
-            libegl-dev \
-            libgl1-mesa-glx \
-            libgl1-mesa-dev \
-            libgles2-mesa-dev \
-            libxcb-glx0 \
-            libxcb-glx0-dev \
-            libasound2 \
-            libpulse0 \
-            fuse \
-            libfuse2
+          docker build -f Dockerfile.linux-appimage -t just-talk-linux-appimage .
+          docker run --rm \
+            -v ${{ github.workspace }}:/app \
+            -w /app \
+            just-talk-linux-appimage \
+            bash scripts/build-appimage.sh
 
-      - name: Install dependencies
-        run: uv sync --frozen --extra build
-
-      - name: Build binary with PyInstaller
+      - name: Generate checksums
         run: |
-          JT_BINARY_NAME=just-talk-x86_64 JT_ONEFILE=1 \
-            uv run pyinstaller just_talk.spec
-
-      - name: Download appimagetool
-        run: |
-          wget -q https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage
-          chmod +x appimagetool-x86_64.AppImage
-
-      - name: Create AppImage
-        run: |
-          mkdir -p AppDir/usr/bin
-          mkdir -p AppDir/usr/share/applications
-          mkdir -p AppDir/usr/share/icons/hicolor/256x256/apps
-
-          # Copy binary
-          cp dist/just-talk-x86_64 AppDir/usr/bin/just-talk
-
-          # Copy icon
-          if [ -f icon.png ]; then
-            cp icon.png AppDir/usr/share/icons/hicolor/256x256/apps/just-talk.png
-            cp icon.png AppDir/just-talk.png
-          fi
-
-          # Create desktop file
-          cat > AppDir/just-talk.desktop << 'DESKTOP'
-          [Desktop Entry]
-          Type=Application
-          Name=Just Talk
-          Exec=just-talk
-          Icon=just-talk
-          Categories=AudioVideo;Audio;
-          Comment=Speech recognition with global hotkey support
-          DESKTOP
-
-          cp AppDir/just-talk.desktop AppDir/usr/share/applications/
-
-          # Create AppRun
-          cat > AppDir/AppRun << 'APPRUN'
-          #!/bin/bash
-          SELF=$(readlink -f "$0")
-          HERE=${SELF%/*}
-          export PATH="${HERE}/usr/bin:${PATH}"
-          exec "${HERE}/usr/bin/just-talk" "$@"
-          APPRUN
-          chmod +x AppDir/AppRun
-
-          # Build AppImage
-          ARCH=x86_64 ./appimagetool-x86_64.AppImage AppDir \
-            "dist/just-talk-${{ steps.version.outputs.version }}-x86_64.AppImage"
-
-      - name: Rename binary and generate checksums
-        run: |
-          mv dist/just-talk-x86_64 "dist/just-talk-${{ steps.version.outputs.version }}-x86_64"
           cd dist
-          sha256sum "just-talk-${{ steps.version.outputs.version }}-x86_64" > "just-talk-${{ steps.version.outputs.version }}-x86_64.sha256"
           sha256sum "just-talk-${{ steps.version.outputs.version }}-x86_64.AppImage" > "just-talk-${{ steps.version.outputs.version }}-x86_64.AppImage.sha256"
-
-      - name: Upload binary artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: just-talk-linux-x86_64-${{ steps.version.outputs.version }}
-          path: dist/just-talk-${{ steps.version.outputs.version }}-x86_64
 
       - name: Upload AppImage artifact
         uses: actions/upload-artifact@v4
@@ -142,7 +61,5 @@ jobs:
         with:
           tag_name: v${{ steps.version.outputs.version }}
           files: |
-            dist/just-talk-${{ steps.version.outputs.version }}-x86_64
-            dist/just-talk-${{ steps.version.outputs.version }}-x86_64.sha256
             dist/just-talk-${{ steps.version.outputs.version }}-x86_64.AppImage
             dist/just-talk-${{ steps.version.outputs.version }}-x86_64.AppImage.sha256
