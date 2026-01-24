@@ -13,8 +13,13 @@ hiddenimports += collect_submodules("PyQt6.QtWebChannel")
 hiddenimports += collect_submodules("pynput")
 hiddenimports += collect_submodules("sounddevice")
 hiddenimports += ["numpy"]
-# pynput X11 backend (not always collected automatically)
+# pynput platform backends (not always collected automatically)
 hiddenimports += [
+    # Windows backend
+    "pynput.keyboard._win32",
+    "pynput.mouse._win32",
+    "pynput._util.win32",
+    # X11/Linux backend
     "pynput.keyboard._xorg",
     "pynput.mouse._xorg",
     "pynput._util.xorg",
