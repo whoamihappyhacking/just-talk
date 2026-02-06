@@ -1203,6 +1203,61 @@ class HistoryModel(QtCore.QAbstractListModel):
         return [dict(item) for item in self._items]
 
 
+def _check_mac_permissions() -> dict:
+    """检测 macOS 三项系统权限状态（全部通过 ctypes 调用系统框架，不依赖 pyobjc）。
+
+    Returns dict with keys: input_monitoring, accessibility, microphone.
+    microphone 的值可能是 True/False/"undetermined"。
+    Non-macOS platforms always return all True.
+    """
+    import ctypes
+
+    result = {"input_monitoring": True, "accessibility": True, "microphone": True}
+    if sys.platform != "darwin":
+        return result
+
+    # 辅助功能 (Accessibility) — AXIsProcessTrusted 实时查询 TCC 数据库
+    try:
+        appservices = ctypes.cdll.LoadLibrary(
+            "/System/Library/Frameworks/ApplicationServices.framework/ApplicationServices"
+        )
+        _ax_check = appservices.AXIsProcessTrusted
+        _ax_check.restype = ctypes.c_bool
+        result["accessibility"] = bool(_ax_check())
+    except Exception:
+        result["accessibility"] = False
+
+    # 输入监控 (Input Monitoring) — IOHIDCheckAccess 实时查询
+    try:
+        iokit = ctypes.cdll.LoadLibrary(
+            "/System/Library/Frameworks/IOKit.framework/IOKit"
+        )
+        # IOHIDCheckAccess(kIOHIDRequestTypeListenEvent=1)
+        # 返回: 0=granted, 1=denied, 2=unknown
+        result["input_monitoring"] = iokit.IOHIDCheckAccess(1) == 0
+    except Exception:
+        result["input_monitoring"] = False
+
+    # 麦克风 (Microphone)
+    if _HAS_QTPERMISSION:
+        try:
+            app = QtWidgets.QApplication.instance()
+            if app:
+                status = app.checkPermission(QMicrophonePermission())
+                if status == QtCore.Qt.PermissionStatus.Granted:
+                    result["microphone"] = True
+                elif status == QtCore.Qt.PermissionStatus.Undetermined:
+                    result["microphone"] = "undetermined"
+                else:
+                    result["microphone"] = False
+            else:
+                result["microphone"] = False
+        except Exception:
+            result["microphone"] = False
+
+    return result
+
+
 class AsrController(QtCore.QObject):
     statusTextChanged = QtCore.pyqtSignal()
     modeChanged = QtCore.pyqtSignal()
@@ -1239,6 +1294,7 @@ class AsrController(QtCore.QObject):
     historyRowInserted = QtCore.pyqtSignal(int, str)  # JSON string
     historyRowUpdated = QtCore.pyqtSignal(int, str)  # JSON string
     historyRowRemoved = QtCore.pyqtSignal(int)
+    macPermissionsChanged = QtCore.pyqtSignal()
 
     RESOURCE_ID_DEFAULT = "volc.seedasr.sauc.duration"
     CHUNK_MS_DEFAULT = 200
@@ -1336,6 +1392,12 @@ class AsrController(QtCore.QObject):
         self._is_linux = sys.platform.startswith("linux")
         self._is_windows = sys.platform.startswith("win")
         self._is_mac = sys.platform == "darwin"
+        # macOS 权限状态（非 macOS 默认全部为 True）
+        self._mac_input_monitoring_granted = True
+        self._mac_accessibility_granted = True
+        self._mac_microphone_granted = True
+        self._mac_microphone_undetermined = False
+        self._mac_permissions_dismissed = False
         if self._is_mac:
             self._auto_submit_paste_keys = "cmd+v"
         self._xdotool_path = shutil.which("xdotool") if self._is_linux else None
@@ -1397,8 +1459,98 @@ class AsrController(QtCore.QObject):
         self._load_personalization_config()
         self._refresh_auto_submit_status()
         self._load_stats()
+        if self._is_mac:
+            self._check_mac_permissions_impl()
         self._update_status_text()
         self._update_stats()
+
+    # ── macOS 权限检测 ────────────────────────────────────────────
+
+    def _check_mac_permissions_impl(self) -> None:
+        """检测 macOS 权限并更新内部状态。"""
+        if not self._is_mac:
+            return
+        perms = _check_mac_permissions()
+        self._mac_input_monitoring_granted = bool(perms["input_monitoring"])
+        self._mac_accessibility_granted = bool(perms["accessibility"])
+        # microphone 可能是 True/False/"undetermined"
+        mic = perms["microphone"]
+        self._mac_microphone_granted = (mic is True)
+        self._mac_microphone_undetermined = (mic == "undetermined")
+        # 始终 emit 以确保 JS 侧刷新
+        self.macPermissionsChanged.emit()
+
+    @QtCore.pyqtProperty(bool, constant=True)
+    def isMacOS(self) -> bool:  # noqa: N802
+        return self._is_mac
+
+    @QtCore.pyqtProperty(bool, notify=macPermissionsChanged)
+    def macInputMonitoringGranted(self) -> bool:  # noqa: N802
+        return self._mac_input_monitoring_granted
+
+    @QtCore.pyqtProperty(bool, notify=macPermissionsChanged)
+    def macAccessibilityGranted(self) -> bool:  # noqa: N802
+        return self._mac_accessibility_granted
+
+    @QtCore.pyqtProperty(bool, notify=macPermissionsChanged)
+    def macMicrophoneGranted(self) -> bool:  # noqa: N802
+        return self._mac_microphone_granted
+
+    @QtCore.pyqtProperty(bool, notify=macPermissionsChanged)
+    def macMicrophoneUndetermined(self) -> bool:  # noqa: N802
+        return self._mac_microphone_undetermined
+
+    @QtCore.pyqtSlot()
+    def checkMacPermissions(self) -> None:  # noqa: N802
+        """重新检测 macOS 权限（供 JS 调用）。"""
+        self._check_mac_permissions_impl()
+
+    @QtCore.pyqtSlot()
+    def requestMicPermission(self) -> None:  # noqa: N802
+        """主动请求麦克风权限（触发系统弹窗）。"""
+        if not self._is_mac or not _HAS_QTPERMISSION:
+            return
+        app = QtWidgets.QApplication.instance()
+        if app is None:
+            return
+        permission = QMicrophonePermission()
+        status = app.checkPermission(permission)
+        if status == QtCore.Qt.PermissionStatus.Undetermined:
+            app.requestPermission(permission, self._on_mic_perm_for_overlay)
+        else:
+            # 已经有结果，直接刷新
+            self._check_mac_permissions_impl()
+
+    def _on_mic_perm_for_overlay(self, permission: "QPermission") -> None:
+        """麦克风权限请求回调 — 刷新引导页状态。"""
+        self._check_mac_permissions_impl()
+
+    @QtCore.pyqtSlot(str)
+    def openMacPermissionPane(self, pane: str) -> None:  # noqa: N802
+        """打开 macOS 系统设置对应的隐私面板。"""
+        pane_urls = {
+            "input_monitoring": "x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent",
+            "accessibility": "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility",
+            "microphone": "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone",
+        }
+        url = pane_urls.get(pane)
+        if url:
+            subprocess.Popen(["open", url])
+
+    @QtCore.pyqtSlot()
+    def restartApp(self) -> None:  # noqa: N802
+        """重启应用。"""
+        self.shutdown()
+        from PyQt6.QtCore import QProcess
+
+        QProcess.startDetached(sys.executable, sys.argv)
+        QtWidgets.QApplication.instance().quit()
+
+    @QtCore.pyqtSlot()
+    def dismissMacPermissions(self) -> None:  # noqa: N802
+        """关闭权限引导页（仅当次会话）。"""
+        self._mac_permissions_dismissed = True
+        self.macPermissionsChanged.emit()
 
     @QtCore.pyqtProperty(str, notify=statusTextChanged)
     def statusText(self) -> str:  # noqa: N802
