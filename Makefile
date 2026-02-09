@@ -19,7 +19,7 @@ APPIMAGETOOL_URL ?= https://github.com/AppImage/AppImageKit/releases/download/co
 VERSION ?= $(shell python -c "import tomllib; print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")
 APPIMAGE_IMAGE ?= just-talk-linux-appimage
 
-.PHONY: sync build-linux build-appimage build-appimage-local docker-appimage-image build-windows build-all clean-dist
+.PHONY: sync build-linux build-appimage build-appimage-local docker-appimage-image build-windows build-macos build-dmg build-all clean-dist
 
 sync:
 	$(UV) sync --frozen --extra build
@@ -125,6 +125,40 @@ build-linux-arm: docker-linux-arm-image
 			$(CHOWN) -R $(CHOWN_USER) dist build; \
 		fi; \
 	fi
+
+build-macos: sync
+	@if [ -f icon.png ] && [ ! -f icon.icns ]; then \
+		echo "Generating icon.icns..."; \
+		mkdir -p icon.iconset; \
+		for size in 16 32 64 128 256 512 1024; do \
+			sips -z $$size $$size icon.png --out icon.iconset/icon_$${size}.png > /dev/null; \
+		done; \
+		cp icon.iconset/icon_16.png icon.iconset/icon_16x16.png; \
+		cp icon.iconset/icon_32.png icon.iconset/icon_16x16@2x.png; \
+		cp icon.iconset/icon_32.png icon.iconset/icon_32x32.png; \
+		cp icon.iconset/icon_64.png icon.iconset/icon_32x32@2x.png; \
+		cp icon.iconset/icon_128.png icon.iconset/icon_128x128.png; \
+		cp icon.iconset/icon_256.png icon.iconset/icon_128x128@2x.png; \
+		cp icon.iconset/icon_256.png icon.iconset/icon_256x256.png; \
+		cp icon.iconset/icon_512.png icon.iconset/icon_256x256@2x.png; \
+		cp icon.iconset/icon_512.png icon.iconset/icon_512x512.png; \
+		cp icon.iconset/icon_1024.png icon.iconset/icon_512x512@2x.png; \
+		iconutil -c icns icon.iconset -o icon.icns; \
+		rm -rf icon.iconset; \
+	fi
+	JT_ONEFILE=0 JT_ICON=icon.icns $(UV) run pyinstaller just_talk.spec
+
+build-dmg: build-macos
+	@rm -rf dist/dmg-staging
+	@mkdir -p dist/dmg-staging
+	cp -R "dist/Just Talk.app" dist/dmg-staging/
+	ln -s /Applications dist/dmg-staging/Applications
+	hdiutil create -volname "Just Talk" \
+		-srcfolder dist/dmg-staging \
+		-ov -format UDZO \
+		"dist/just-talk-macos-$(VERSION).dmg"
+	@rm -rf dist/dmg-staging
+	@echo "DMG created: dist/just-talk-macos-$(VERSION).dmg"
 
 build-all: build-linux build-windows
 

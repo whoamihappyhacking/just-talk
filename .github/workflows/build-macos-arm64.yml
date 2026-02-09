@@ -111,10 +111,14 @@ jobs:
 
       - name: Create DMG
         run: |
+          mkdir -p dist/dmg-staging
+          cp -R "dist/Just Talk.app" dist/dmg-staging/
+          ln -s /Applications dist/dmg-staging/Applications
           hdiutil create -volname "Just Talk" \
-            -srcfolder "dist/Just Talk.app" \
+            -srcfolder dist/dmg-staging \
             -ov -format UDZO \
             "dist/just-talk-macos-arm64-${{ steps.version.outputs.version }}.dmg"
+          rm -rf dist/dmg-staging
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
