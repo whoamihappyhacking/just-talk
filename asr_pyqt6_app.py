@@ -3137,7 +3137,9 @@ class AsrController(QtCore.QObject):
             mode = self._auto_submit_mode
             if mode == "type":
                 if not self._send_keystrokes_text(text):
-                    self._log("AUTO_SUBMIT", "direct typing failed")
+                    # type 模式失败，回退到粘贴模式
+                    self._log("AUTO_SUBMIT", "direct typing failed, fallback to paste")
+                    self._send_paste(text)
                 return
             if mode == "paste":
                 self._send_paste(text)
@@ -3179,15 +3181,13 @@ class AsrController(QtCore.QObject):
 
     def _send_keystrokes_text(self, text: str) -> bool:
         if self._is_linux:
-            if self._is_wayland and self._wtype_path:
-                if self._wtype_type(text):
-                    return True
+            # Wayland 下不支持直接输入上屏，只支持粘贴上屏
+            if self._is_wayland:
+                return False
             if self._xdotool_path and self._xdotool_type(
                 text,
                 clear_modifiers=self._session_mode == "hold",
             ):
-                return True
-            if self._wtype_path and self._wtype_type(text):
                 return True
         # Windows: try native SendInput API first
         if self._is_windows:
@@ -3214,12 +3214,10 @@ class AsrController(QtCore.QObject):
         clipboard.setText(text)
         # Ensure clipboard data is committed before sending paste
         QtWidgets.QApplication.processEvents()
-        key_combo = self._normalize_key_combo(self._auto_submit_paste_keys)
-        if not key_combo:
-            key_combo = self._default_paste_keys()
         if self._is_linux:
+            # Wayland: 使用 wtype 发送 Shift+Insert 粘贴
             if self._is_wayland and self._wtype_path:
-                if self._wtype_key(key_combo):
+                if self._wtype_key("shift+insert"):
                     return
             # X11: 尝试使用底层 XTest 扩展 (PRIMARY + Shift+Insert)
             if not self._is_wayland:
@@ -3230,9 +3228,10 @@ class AsrController(QtCore.QObject):
                         return
                 except Exception:
                     pass
-            if self._xdotool_path and self._xdotool_key(key_combo):
+            # 备用：xdotool/wtype 发送 Shift+Insert
+            if self._xdotool_path and self._xdotool_key("shift+Insert"):
                 return
-            if self._wtype_path and self._wtype_key(key_combo):
+            if self._wtype_path and self._wtype_key("shift+insert"):
                 return
         # Windows: try native Windows API first (WM_PASTE, then SendInput)
         if self._is_windows:
@@ -3664,7 +3663,7 @@ class AsrController(QtCore.QObject):
             if self._is_mac:
                 order = "macOS: quartz > pynput"
             elif self._is_wayland:
-                order = "Wayland: wtype > xdotool > pynput"
+                order = "Wayland: wtype shift+insert (仅粘贴)"
             else:
                 order = "X11: xdotool > wtype > pynput"
             status = f"上屏后端：{self._auto_submit_mode}（{order}），可用：{available_text}"

@@ -27,17 +27,13 @@ class X11Paste:
         if not XLIB_AVAILABLE:
             raise RuntimeError("python-xlib not available")
 
-        self._display: Optional[display.Display] = None
+        # 注意：不再保持长期的 display 连接，每次操作使用独立连接
+        # 这样可以避免线程安全问题
         self._owner_window = None
         self._selection_text: bytes = b""
         self._handler_thread: Optional[threading.Thread] = None
         self._stop_handler = False
-
-    def _ensure_display(self) -> display.Display:
-        """确保 display 连接存在"""
-        if self._display is None:
-            self._display = display.Display()
-        return self._display
+        self._handler_display: Optional[display.Display] = None
 
     def _get_atoms(self, disp: display.Display):
         """获取所需的 atoms"""
@@ -99,19 +95,74 @@ class X11Paste:
         requestor.send_event(notify)
         disp.flush()
 
-    def _handle_selection_requests(self, disp: display.Display, timeout: float = 2.0):
-        """处理 SelectionRequest 事件"""
-        start = time.time()
-        handled = 0
-        while not self._stop_handler and time.time() - start < timeout:
-            if disp.pending_events():
-                ev = disp.next_event()
-                if ev.type == X.SelectionRequest:
-                    self._respond_selection(ev, disp)
-                    handled += 1
-                    if handled >= 5:  # 处理足够多的请求后退出
-                        break
-            time.sleep(0.01)
+    def _handle_selection_requests(self, timeout: float = 2.0):
+        """处理 SelectionRequest 事件 - 使用独立的 Display 连接"""
+        try:
+            # 创建独立的 Display 连接用于后台线程
+            self._handler_display = display.Display()
+            disp = self._handler_display
+            atoms = self._get_atoms(disp)
+
+            # 重新获取 owner window 的引用（通过 window ID）
+            if self._owner_window is None:
+                return
+            owner_id = self._owner_window.id
+            owner = disp.create_resource_object('window', owner_id)
+
+            start = time.time()
+            handled = 0
+            while not self._stop_handler and time.time() - start < timeout:
+                if disp.pending_events():
+                    ev = disp.next_event()
+                    if ev.type == X.SelectionRequest:
+                        self._respond_selection_with_disp(ev, disp, atoms)
+                        handled += 1
+                        if handled >= 5:  # 处理足够多的请求后退出
+                            break
+                else:
+                    time.sleep(0.01)
+        except Exception:
+            pass
+        finally:
+            # 清理后台线程的 Display 连接
+            if self._handler_display:
+                try:
+                    self._handler_display.close()
+                except Exception:
+                    pass
+                self._handler_display = None
+
+    def _respond_selection_with_disp(self, ev, disp: display.Display, atoms: dict):
+        """响应 SelectionRequest（使用提供的 display 和 atoms）"""
+        target = ev.target
+        prop = ev.property if ev.property else ev.target
+        requestor = ev.requestor
+
+        try:
+            if target == atoms['TARGETS']:
+                # 返回支持的目标类型
+                requestor.change_property(
+                    prop, Xatom.ATOM, 32,
+                    [atoms['UTF8_STRING'], Xatom.STRING]
+                )
+            elif target in (atoms['UTF8_STRING'], Xatom.STRING):
+                # 返回文本数据
+                requestor.change_property(prop, target, 8, self._selection_text)
+            else:
+                prop = X.NONE
+
+            # 发送 SelectionNotify
+            notify = event.SelectionNotify(
+                time=ev.time,
+                requestor=requestor,
+                selection=ev.selection,
+                target=target,
+                property=prop
+            )
+            requestor.send_event(notify)
+            disp.flush()
+        except Exception:
+            pass
 
     def _xtest_key_combo(self, disp: display.Display, modifier_keycode: int, key_keycode: int):
         """使用 XTest 发送组合键"""
@@ -142,27 +193,33 @@ class X11Paste:
         if not XLIB_AVAILABLE:
             return False
 
+        # 每次粘贴使用独立的 display 连接，避免线程安全问题
+        main_disp: Optional[display.Display] = None
         try:
-            disp = self._ensure_display()
-            keycodes = self._get_keycodes(disp)
+            # 先清理之前的资源
+            self._cleanup_previous()
+
+            # 创建主线程的 display 连接
+            main_disp = display.Display()
+            keycodes = self._get_keycodes(main_disp)
 
             # 设置 PRIMARY selection
-            self._set_primary(text, disp)
+            self._set_primary(text, main_disp)
 
-            # 启动后台线程处理 selection 请求
+            # 启动后台线程处理 selection 请求（使用独立连接）
             self._stop_handler = False
             self._handler_thread = threading.Thread(
                 target=self._handle_selection_requests,
-                args=(disp, 2.0),
+                args=(2.0,),
                 daemon=True
             )
             self._handler_thread.start()
 
-            # 等待一下确保 selection 设置完成
+            # 等待一下确保后台线程准备好
             time.sleep(0.05)
 
             # 发送 Shift+Insert
-            self._xtest_key_combo(disp, keycodes['shift'], keycodes['insert'])
+            self._xtest_key_combo(main_disp, keycodes['shift'], keycodes['insert'])
 
             # 等待粘贴完成
             time.sleep(0.1)
@@ -171,24 +228,44 @@ class X11Paste:
 
         except Exception:
             return False
+        finally:
+            # 主线程的 display 可以立即关闭，因为按键已经发送完成
+            # owner_window 需要保留，因为后台线程还需要响应 SelectionRequest
+            if main_disp:
+                try:
+                    main_disp.close()
+                except Exception:
+                    pass
 
-    def cleanup(self):
-        """清理资源"""
+    def _cleanup_previous(self):
+        """清理之前的粘贴操作资源"""
         self._stop_handler = True
         if self._handler_thread and self._handler_thread.is_alive():
-            self._handler_thread.join(timeout=0.5)
+            self._handler_thread.join(timeout=0.1)
         if self._owner_window:
             try:
                 self._owner_window.destroy()
             except Exception:
                 pass
             self._owner_window = None
-        if self._display:
+
+    def cleanup(self):
+        """清理资源"""
+        self._stop_handler = True
+        if self._handler_thread and self._handler_thread.is_alive():
+            self._handler_thread.join(timeout=0.5)
+        if self._handler_display:
             try:
-                self._display.close()
+                self._handler_display.close()
             except Exception:
                 pass
-            self._display = None
+            self._handler_display = None
+        if self._owner_window:
+            try:
+                self._owner_window.destroy()
+            except Exception:
+                pass
+            self._owner_window = None
 
 
 # 单例实例
