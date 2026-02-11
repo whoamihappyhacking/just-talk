@@ -1841,6 +1841,17 @@ class AsrController(QtCore.QObject):
         """返回历史记录的 JSON 字符串"""
         return json.dumps(self._history_model.as_list())
 
+    @QtCore.pyqtSlot(result=str)
+    def currentRecognitionText(self) -> str:  # noqa: N802
+        """返回当前识别中的文本；若为空则返回最近一次记录"""
+        text = self._current_session_text(include_partial=True)
+        if text:
+            return text
+        latest = self._history_model.item_at(0)
+        if not latest:
+            return ""
+        return str(latest.get("text") or "")
+
     @QtCore.pyqtSlot(int, str)
     def updateHistoryText(self, row: int, text: str) -> None:
         self._history_model.update_item(row, text=text)
@@ -4196,6 +4207,68 @@ def _build_tray_icon() -> QtGui.QIcon:
     return QtGui.QIcon(pixmap)
 
 
+def _install_dbus_service(controller: "AsrController") -> None:
+    if not sys.platform.startswith("linux"):
+        return
+    try:
+        from PyQt6 import QtDBus
+    except Exception as exc:
+        LOG.info("QtDBus not available: %s", exc)
+        return
+
+    bus = QtDBus.QDBusConnection.sessionBus()
+    if not bus.isConnected():
+        LOG.warning("D-Bus session bus not available")
+        return
+
+    service_name = "com.justtalk.App"
+    object_path = "/com/justtalk/App"
+    interface_name = "com.justtalk.Control"
+
+    @QtCore.pyqtClassInfo("D-Bus Interface", interface_name)
+    class DbusController(QtCore.QObject):
+
+        def __init__(self, target: "AsrController") -> None:
+            super().__init__()
+            self._target = target
+
+        @QtCore.pyqtSlot()
+        def Start(self) -> None:  # noqa: N802
+            self._target.start_recognition()
+
+        @QtCore.pyqtSlot()
+        def Stop(self) -> None:  # noqa: N802
+            self._target.stop_recognition()
+
+        @QtCore.pyqtSlot()
+        def Toggle(self) -> None:  # noqa: N802
+            self._target.toggleRecognition()
+
+        @QtCore.pyqtSlot()
+        def Cancel(self) -> None:  # noqa: N802
+            self._target._on_indicator_cancel()
+
+        @QtCore.pyqtSlot(result=str)
+        def GetText(self) -> str:  # noqa: N802
+            return self._target.currentRecognitionText()
+
+    if not bus.registerService(service_name):
+        LOG.warning("Failed to register D-Bus service: %s", service_name)
+        return
+
+    obj = DbusController(controller)
+    if not bus.registerObject(
+        object_path,
+        obj,
+        QtDBus.QDBusConnection.RegisterOption.ExportAllSlots,
+    ):
+        LOG.warning("Failed to register D-Bus object: %s", object_path)
+        return
+
+    controller._dbus_object = obj  # type: ignore[attr-defined]
+    LOG.info("D-Bus service ready: %s %s", service_name, object_path)
+
+
 def main() -> int:
     _setup_frozen_qt_env()
     # 启用 QtWebEngine 远程调试
@@ -4207,6 +4280,7 @@ def main() -> int:
         app.setWindowIcon(app_icon)
     controller = AsrController()
     app.aboutToQuit.connect(controller.shutdown)
+    _install_dbus_service(controller)
 
     # 使用 WebView 前端
     base_dir = getattr(sys, "_MEIPASS", os.path.dirname(__file__))
