@@ -18,7 +18,7 @@ import time
 import uuid
 from array import array
 from dataclasses import dataclass
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Set, Tuple
 from urllib.parse import urlparse
 
 def _resolve_log_path() -> str:
@@ -1258,6 +1258,66 @@ def _check_mac_permissions() -> dict:
     return result
 
 
+def _is_kde_wayland() -> bool:
+    """检测当前是否为 KDE Plasma + Wayland 会话。"""
+    if not sys.platform.startswith("linux"):
+        return False
+    desktop = os.environ.get("XDG_CURRENT_DESKTOP", "").upper()
+    session = os.environ.get("XDG_SESSION_TYPE", "").strip().lower()
+    return "KDE" in desktop and session == "wayland"
+
+
+def _check_kde_wayland_input_control() -> bool:
+    """检查 KDE Wayland 下 Remote Desktop 输入控制是否已预授权。
+
+    通过 D-Bus 直接查询 xdg-permission-store 中 kde-authorized 表的
+    remote-desktop 权限。不依赖 Flatpak。
+    """
+    try:
+        result = subprocess.run(
+            [
+                "busctl", "--user", "call",
+                "org.freedesktop.impl.portal.PermissionStore",
+                "/org/freedesktop/impl/portal/PermissionStore",
+                "org.freedesktop.impl.portal.PermissionStore",
+                "Lookup", "ss", "kde-authorized", "remote-desktop",
+            ],
+            capture_output=True, text=True, timeout=5,
+        )
+        if result.returncode != 0:
+            # 表不存在或服务不可用
+            return False
+        # busctl 输出类似:
+        # a{sas} 1 "just-talk" 1 "yes" ...
+        output = result.stdout
+        if "just-talk" in output and "yes" in output:
+            return True
+        return False
+    except FileNotFoundError:
+        # busctl 不可用，尝试 dbus-send
+        try:
+            result = subprocess.run(
+                [
+                    "dbus-send", "--session", "--print-reply", "--type=method_call",
+                    "--dest=org.freedesktop.impl.portal.PermissionStore",
+                    "/org/freedesktop/impl/portal/PermissionStore",
+                    "org.freedesktop.impl.portal.PermissionStore.Lookup",
+                    "string:kde-authorized", "string:remote-desktop",
+                ],
+                capture_output=True, text=True, timeout=5,
+            )
+            if result.returncode != 0:
+                return False
+            output = result.stdout
+            if "just-talk" in output and "yes" in output:
+                return True
+            return False
+        except Exception:
+            return False
+    except Exception:
+        return False
+
+
 class AsrController(QtCore.QObject):
     statusTextChanged = QtCore.pyqtSignal()
     modeChanged = QtCore.pyqtSignal()
@@ -1295,11 +1355,12 @@ class AsrController(QtCore.QObject):
     historyRowUpdated = QtCore.pyqtSignal(int, str)  # JSON string
     historyRowRemoved = QtCore.pyqtSignal(int)
     macPermissionsChanged = QtCore.pyqtSignal()
+    kdePermissionsChanged = QtCore.pyqtSignal()
 
     RESOURCE_ID_DEFAULT = "volc.seedasr.sauc.duration"
     CHUNK_MS_DEFAULT = 200
-    DEFAULT_APP_ID = "9106283284"
-    DEFAULT_ACCESS_TOKEN = "jGEzfiNFgDgnAGpAp-Kc8skAcBswUjXZ"
+    DEFAULT_APP_ID = ""
+    DEFAULT_ACCESS_TOKEN = ""
     DEFAULT_RECORDING_LIMIT_S = 60
     SETTINGS_ORG = "JustTalk"
     SETTINGS_APP = "AsrApp"
@@ -1345,6 +1406,11 @@ class AsrController(QtCore.QObject):
         self._pre_connect_buffer: bytearray = bytearray()
         self._recording_before_connected = False  # 标记是否在连接前就开始录音
         self._stop_pending_after_connect = False  # 标记录音已结束，等待连接后发送
+        self._pending_connect_url: Optional[str] = None
+        self._pending_connect_headers: Optional[dict] = None
+        self._active_dialog_keys: Set[str] = set()
+        self._dialog_last_shown_at: Dict[str, float] = {}
+        self._dialog_suppression_window_s = 1.5
 
         self._committed_text = ""
         self._last_committed_end_time = -1
@@ -1398,6 +1464,10 @@ class AsrController(QtCore.QObject):
         self._mac_microphone_granted = True
         self._mac_microphone_undetermined = False
         self._mac_permissions_dismissed = False
+        # KDE Wayland 权限状态
+        self._is_kde_wayland = _is_kde_wayland()
+        self._kde_input_control_granted = True  # 默认 True，非 KDE Wayland 不检测
+        self._kde_permissions_dismissed = False
         if self._is_mac:
             self._auto_submit_paste_keys = "cmd+v"
         self._xdotool_path = shutil.which("xdotool") if self._is_linux else None
@@ -1461,6 +1531,8 @@ class AsrController(QtCore.QObject):
         self._load_stats()
         if self._is_mac:
             self._check_mac_permissions_impl()
+        if self._is_kde_wayland:
+            self._check_kde_permissions_impl()
         self._update_status_text()
         self._update_stats()
 
@@ -1551,6 +1623,97 @@ class AsrController(QtCore.QObject):
         """关闭权限引导页（仅当次会话）。"""
         self._mac_permissions_dismissed = True
         self.macPermissionsChanged.emit()
+
+    # ── KDE Wayland 权限检测 ─────────────────────────────────────
+
+    def _check_kde_permissions_impl(self) -> None:
+        """检测 KDE Wayland 输入控制权限并更新状态。"""
+        if not self._is_kde_wayland:
+            return
+        self._kde_input_control_granted = _check_kde_wayland_input_control()
+        self.kdePermissionsChanged.emit()
+
+    @QtCore.pyqtProperty(bool, constant=True)
+    def isKdeWayland(self) -> bool:  # noqa: N802
+        return self._is_kde_wayland
+
+    @QtCore.pyqtProperty(bool, notify=kdePermissionsChanged)
+    def kdeInputControlGranted(self) -> bool:  # noqa: N802
+        return self._kde_input_control_granted
+
+    @QtCore.pyqtSlot()
+    def checkKdePermissions(self) -> None:  # noqa: N802
+        """重新检测 KDE Wayland 权限（供 JS 调用）。"""
+        self._check_kde_permissions_impl()
+
+    @QtCore.pyqtSlot()
+    def fixKdeInputControl(self) -> None:  # noqa: N802
+        """通过 D-Bus PermissionStore 预授权输入控制（不依赖 Flatpak）。"""
+        success = False
+        # 尝试 busctl
+        try:
+            ret = subprocess.run(
+                [
+                    "busctl", "--user", "call",
+                    "org.freedesktop.impl.portal.PermissionStore",
+                    "/org/freedesktop/impl/portal/PermissionStore",
+                    "org.freedesktop.impl.portal.PermissionStore",
+                    "SetPermission", "sbsas",
+                    "kde-authorized", "true", "remote-desktop",
+                    "just-talk", "1", "yes",
+                ],
+                capture_output=True, text=True, timeout=10,
+            )
+            success = (ret.returncode == 0)
+        except FileNotFoundError:
+            pass
+        except Exception as e:
+            self._log("KDE", f"busctl SetPermission failed: {e}")
+
+        if not success:
+            # 回退到 dbus-send
+            try:
+                ret = subprocess.run(
+                    [
+                        "dbus-send", "--session", "--type=method_call",
+                        "--dest=org.freedesktop.impl.portal.PermissionStore",
+                        "/org/freedesktop/impl/portal/PermissionStore",
+                        "org.freedesktop.impl.portal.PermissionStore.SetPermission",
+                        "string:kde-authorized", "boolean:true",
+                        "string:remote-desktop", "string:just-talk",
+                        "array:string:yes",
+                    ],
+                    capture_output=True, text=True, timeout=10,
+                )
+                success = (ret.returncode == 0)
+            except Exception as e:
+                self._log("KDE", f"dbus-send SetPermission failed: {e}")
+
+        if success:
+            self._log("KDE", "Input control permission set successfully")
+        else:
+            self._log("KDE", "Failed to set input control permission via D-Bus")
+        # 重新检测
+        self._check_kde_permissions_impl()
+
+    @QtCore.pyqtSlot()
+    def openKdeSystemSettings(self) -> None:  # noqa: N802
+        """打开 KDE 系统设置 — 安全与隐私 → 应用程序权限。"""
+        try:
+            subprocess.Popen(["systemsettings", "kcm_portal_permissions"])
+        except FileNotFoundError:
+            try:
+                subprocess.Popen(["systemsettings5", "kcm_portal_permissions"])
+            except Exception:
+                pass
+        except Exception:
+            pass
+
+    @QtCore.pyqtSlot()
+    def dismissKdePermissions(self) -> None:  # noqa: N802
+        """关闭 KDE 权限引导页（仅当次会话）。"""
+        self._kde_permissions_dismissed = True
+        self.kdePermissionsChanged.emit()
 
     @QtCore.pyqtProperty(str, notify=statusTextChanged)
     def statusText(self) -> str:  # noqa: N802
@@ -1886,7 +2049,13 @@ class AsrController(QtCore.QObject):
             return
 
         if not _HAS_QTMULTIMEDIA:
-            QtWidgets.QMessageBox.critical(None, "错误", "未检测到 QtMultimedia，无法使用麦克风。")
+            self._reset_hotkey_state()
+            self._show_message_box_once(
+                "mic:qtmultimedia-missing",
+                QtWidgets.QMessageBox.Icon.Critical,
+                "错误",
+                "未检测到 QtMultimedia，无法使用麦克风。",
+            )
             return
 
         if indicator_mode in ("hold", "toggle"):
@@ -1904,7 +2073,14 @@ class AsrController(QtCore.QObject):
             }
             missing = [k for k, v in headers.items() if not v and k not in ("X-Api-Connect-Id",)]
             if missing:
-                QtWidgets.QMessageBox.warning(None, "提示", "缺少鉴权字段：\n" + "\n".join(missing))
+                self._reset_hotkey_state()
+                missing_text = "\n".join(missing)
+                self._show_message_box_once(
+                    f"config:missing-auth:{missing_text}",
+                    QtWidgets.QMessageBox.Icon.Warning,
+                    "提示",
+                    "缺少鉴权字段：\n" + missing_text,
+                )
                 if self.recording_indicator:
                     self.recording_indicator.hide()
                 return
@@ -1914,26 +2090,25 @@ class AsrController(QtCore.QObject):
             url = self._mode_to_url()
             headers["X-Api-Connect-Id"] = self._connect_id
 
-            # 立即开始录音，同时后台连接 WebSocket
             self._recording_before_connected = True
             self._stop_pending_after_connect = False
             self._pre_connect_buffer.clear()
-
+            self._store_pending_connection(url, headers)
             self._connecting = True
             self.isConnectingChanged.emit()
             self._update_status_text()
 
-            # 显示录音指示器（而不是连接中指示器）
-            self._show_indicator_mode(self._indicator_mode)
-            # 立即开始录音
-            self._start_mic()
-            # 后台连接 WebSocket
-            self.ws.connect_url(url, headers)
+            start_status = self._start_mic()
+            if start_status == "started":
+                self._connect_pending_session()
+            elif start_status == "failed":
+                self._cancel_pending_recording_start()
             return
 
         self._begin_new_session()
-        self._show_indicator_mode(self._indicator_mode)
-        self._start_mic()
+        start_status = self._start_mic()
+        if start_status == "failed":
+            self._cancel_pending_recording_start()
 
     @QtCore.pyqtSlot()
     def stop_recognition(self) -> None:
@@ -2047,9 +2222,19 @@ class AsrController(QtCore.QObject):
     @QtCore.pyqtSlot()
     def showHotkeySettings(self) -> None:
         if not self.hotkey_manager:
-            QtWidgets.QMessageBox.information(None, "提示", "快捷键模块未加载。请确保已安装pynput: pip install pynput")
+            self._show_message_box_once(
+                "hotkey:module-missing",
+                QtWidgets.QMessageBox.Icon.Information,
+                "提示",
+                "快捷键模块未加载。请确保已安装pynput: pip install pynput",
+            )
             return
-        QtWidgets.QMessageBox.information(None, "提示", "快捷键请在页面中直接设置。")
+        self._show_message_box_once(
+            "hotkey:settings-in-web",
+            QtWidgets.QMessageBox.Icon.Information,
+            "提示",
+            "快捷键请在页面中直接设置。",
+        )
 
     @QtCore.pyqtSlot(str)
     def copyText(self, text: str) -> None:
@@ -2571,10 +2756,11 @@ class AsrController(QtCore.QObject):
         if not self._sending or not self._using_default_credentials():
             return
         self.stop_recognition()
-        QtWidgets.QMessageBox.information(
-            None,
+        self._show_message_box_once(
+            "limit:default-credentials-60s",
+            QtWidgets.QMessageBox.Icon.Information,
             "提示",
-            "默认内置配置仅支持录制 1 分钟。\n请到火山引擎控制台申请豆包语音转换的 Key，并在连接配置中填写 App ID 和 Access Token。",
+            "请先配置 App ID 和 Access Token。\n请联系懒猫微服VIP群获取教程。",
         )
 
     def _update_stats(self) -> None:
@@ -2894,20 +3080,28 @@ class AsrController(QtCore.QObject):
                 QtCore.QTimer.singleShot(100, self._start_mic_safe)
             else:
                 self._log("MIC", f"Microphone permission not granted: {status}")
-                QtWidgets.QMessageBox.warning(
-                    None,
+                self._show_message_box_once(
+                    "mic:permission-not-granted",
+                    QtWidgets.QMessageBox.Icon.Warning,
                     "麦克风权限",
                     "麦克风权限未授予，无法进行语音识别。",
                 )
+                self._cancel_pending_recording_start()
         except Exception as e:
             self._handle_mic_error("权限回调处理失败", e)
+            self._cancel_pending_recording_start()
 
     def _start_mic_safe(self) -> None:
         """安全启动麦克风，带完整异常捕获"""
         try:
-            self._start_mic()
+            start_status = self._start_mic()
+            if start_status == "started":
+                self._connect_pending_session()
+            elif start_status == "failed":
+                self._cancel_pending_recording_start()
         except Exception as e:
             self._handle_mic_error("启动麦克风失败", e)
+            self._cancel_pending_recording_start()
 
     def _handle_mic_error(self, context: str, error: Exception) -> None:
         """统一处理麦克风相关错误"""
@@ -2920,14 +3114,19 @@ class AsrController(QtCore.QObject):
         self._log("MIC", f"ERROR: {context}: {error}")
 
         # 显示可复制的错误对话框
-        self._show_error_dialog(context, str(error), error_details)
+        self._show_error_dialog(
+            context,
+            str(error),
+            error_details,
+            dialog_key=f"mic-error:{context}",
+        )
 
-    def _start_mic(self) -> None:
+    def _start_mic(self) -> str:
         # 允许在预录音模式下启动麦克风（_recording_before_connected=True 时 _connected=False）
         if self._sending:
-            return
+            return "started"
         if not self._connected and not self._recording_before_connected:
-            return
+            return "aborted"
 
         # macOS: 检查麦克风权限 (Qt 6.5+)
         if sys.platform == "darwin":
@@ -2942,15 +3141,16 @@ class AsrController(QtCore.QObject):
                         # 请求权限，权限授予后重新调用 _start_mic
                         self._log("MIC", "Requesting microphone permission on macOS")
                         app.requestPermission(permission, self._on_mic_permission_result)
-                        return
+                        return "pending"
                     elif status == QtCore.Qt.PermissionStatus.Denied:
                         self._log("MIC", "Microphone permission denied on macOS")
-                        QtWidgets.QMessageBox.critical(
-                            None,
+                        self._show_message_box_once(
+                            "mic:permission-denied",
+                            QtWidgets.QMessageBox.Icon.Critical,
                             "麦克风权限被拒绝",
                             "请在「系统设置 → 隐私与安全性 → 麦克风」中允许本应用访问麦克风。",
                         )
-                        return
+                        return "failed"
                     # status == Granted, continue
             else:
                 self._log("MIC", "QMicrophonePermission not available, skipping permission check")
@@ -2978,22 +3178,27 @@ class AsrController(QtCore.QObject):
         if not use_qt and not use_sd:
             self._log("MIC", "No audio backend available")
             msg = "未检测到可用的音频输入后端。\n\n请检查系统是否有可用的麦克风设备。"
-            QtWidgets.QMessageBox.critical(None, "错误", msg)
-            return
+            self._show_message_box_once(
+                "mic:no-audio-backend",
+                QtWidgets.QMessageBox.Icon.Critical,
+                "错误",
+                msg,
+            )
+            return "failed"
 
         if use_sd:
-            self._start_mic_sounddevice()
-        else:
-            self._start_mic_qt()
+            return "started" if self._start_mic_sounddevice() else "failed"
+        return "started" if self._start_mic_qt() else "failed"
 
-    def _start_mic_qt(self) -> None:
+    def _start_mic_qt(self) -> bool:
         """Start microphone using Qt multimedia backend."""
         try:
-            self._start_mic_qt_impl()
+            return self._start_mic_qt_impl()
         except Exception as e:
             self._handle_mic_error("Qt 音频后端启动失败", e)
+            return False
 
-    def _start_mic_qt_impl(self) -> None:
+    def _start_mic_qt_impl(self) -> bool:
         """Qt 音频后端实际实现"""
         audio_inputs = QMediaDevices.audioInputs()
         device = QMediaDevices.defaultAudioInput()
@@ -3009,11 +3214,13 @@ class AsrController(QtCore.QObject):
             fmt = device.preferredFormat()
 
         if fmt.sampleFormat() != QAudioFormat.SampleFormat.Int16:
-            QtWidgets.QMessageBox.critical(
-                None, "错误",
+            self._show_message_box_once(
+                "mic:unsupported-format",
+                QtWidgets.QMessageBox.Icon.Critical,
+                "错误",
                 f"麦克风格式不支持（需要 Int16）。当前 sampleFormat={fmt.sampleFormat()}",
             )
-            return
+            return False
 
         self._mic_in_rate = int(fmt.sampleRate())
         self._mic_in_channels = int(fmt.channelCount())
@@ -3028,28 +3235,31 @@ class AsrController(QtCore.QObject):
         self._log("MIC", f"QAudioSource started, io={io}, state={src.state()}, error={src.error()}")
         if io is None:
             self._log("MIC", "ERROR: QAudioSource.start() returned None!")
-            QtWidgets.QMessageBox.critical(
-                None,
+            self._show_message_box_once(
+                "mic:qaudiosource-start-none",
+                QtWidgets.QMessageBox.Icon.Critical,
                 "错误",
                 "无法启动音频录制。QAudioSource.start() 返回 None。",
             )
-            return
+            return False
         io.readyRead.connect(self._on_mic_ready)  # type: ignore[attr-defined]
         self._audio_source = src
         self._audio_io = io
         self._finalize_mic_start()
+        return True
 
-    def _start_mic_sounddevice(self) -> None:
+    def _start_mic_sounddevice(self) -> bool:
         """Start microphone using sounddevice backend (macOS preferred, Linux fallback)."""
         try:
-            self._start_mic_sounddevice_impl()
+            return self._start_mic_sounddevice_impl()
         except Exception as e:
             self._handle_mic_error("sounddevice 音频后端启动失败", e)
+            return False
 
-    def _start_mic_sounddevice_impl(self) -> None:
+    def _start_mic_sounddevice_impl(self) -> bool:
         """sounddevice 音频后端实际实现"""
         if _sounddevice is None:
-            return
+            return False
         self._log("MIC", "Using sounddevice backend")
         self._mic_in_rate = 16000
         self._mic_in_channels = 1
@@ -3074,6 +3284,7 @@ class AsrController(QtCore.QObject):
         )
         self._sd_stream.start()
         self._finalize_mic_start()
+        return True
 
     def _finalize_mic_start(self) -> None:
         """Common finalization after mic start."""
@@ -3850,11 +4061,21 @@ class AsrController(QtCore.QObject):
         self._hide_indicator()
 
     def _on_ws_error(self, msg: str) -> None:
-        QtWidgets.QMessageBox.critical(None, "连接错误", msg)
         self._force_close()
+        self._show_message_box_once(
+            f"ws:error:{msg}",
+            QtWidgets.QMessageBox.Icon.Critical,
+            "连接错误",
+            msg,
+        )
 
     def _on_hotkey_error(self, error_msg: str) -> None:
-        QtWidgets.QMessageBox.warning(None, "快捷键错误", error_msg)
+        self._show_message_box_once(
+            f"hotkey:error:{error_msg}",
+            QtWidgets.QMessageBox.Icon.Warning,
+            "快捷键错误",
+            error_msg,
+        )
 
     def _on_snippet_triggered(self, snippet_id: str, text: str) -> None:
         """处理文本片段快捷键触发"""
@@ -3885,9 +4106,13 @@ class AsrController(QtCore.QObject):
     def _on_ws_binary(self, data: bytes) -> None:
         parsed = parse_server_message(data)
         if parsed.kind == "error":
-            QtWidgets.QMessageBox.critical(None, "服务端错误", f"{parsed.error_code}\n{parsed.error_msg}")
-            if self._pending_close_after_last:
-                self._force_close()
+            self._force_close()
+            self._show_message_box_once(
+                f"ws:server-error:{parsed.error_code}:{parsed.error_msg}",
+                QtWidgets.QMessageBox.Icon.Critical,
+                "服务端错误",
+                f"{parsed.error_code}\n{parsed.error_msg}",
+            )
             return
         if parsed.kind != "response":
             return
@@ -3957,8 +4182,89 @@ class AsrController(QtCore.QObject):
         print(f"[{tag}] {msg}")
         LOG.info(f"[{tag}] {msg}")
 
-    def _show_error_dialog(self, title: str, brief: str, details: str) -> None:
+    def _store_pending_connection(self, url: str, headers: dict) -> None:
+        self._pending_connect_url = url
+        self._pending_connect_headers = dict(headers)
+
+    def _clear_pending_connection(self) -> None:
+        self._pending_connect_url = None
+        self._pending_connect_headers = None
+
+    def _connect_pending_session(self) -> None:
+        if self._connected:
+            self._clear_pending_connection()
+            return
+        if not self._pending_connect_url or not self._pending_connect_headers:
+            return
+        pending_url = self._pending_connect_url
+        pending_headers = self._pending_connect_headers
+        self._clear_pending_connection()
+        if not self._connecting:
+            self._connecting = True
+            self.isConnectingChanged.emit()
+            self._update_status_text()
+        self.ws.connect_url(pending_url, pending_headers)
+
+    def _cancel_pending_recording_start(self) -> None:
+        self._reset_hotkey_state()
+        self._clear_pending_connection()
+        if self._current_row is not None:
+            self._finalize_session(cancelled=True)
+        self._force_close()
+        self._update_status_text()
+
+    def _show_message_box_once(
+        self,
+        dialog_key: str,
+        icon: QtWidgets.QMessageBox.Icon,
+        title: str,
+        text: str,
+        informative_text: Optional[str] = None,
+    ) -> bool:
+        now = time.monotonic()
+        if dialog_key in self._active_dialog_keys:
+            self._log("UI", f"Suppress repeated dialog while open: {dialog_key}")
+            return False
+        last_shown = self._dialog_last_shown_at.get(dialog_key)
+        if last_shown is not None and (now - last_shown) < self._dialog_suppression_window_s:
+            self._log("UI", f"Suppress repeated dialog within cooldown: {dialog_key}")
+            return False
+
+        dialog = QtWidgets.QMessageBox()
+        dialog.setIcon(icon)
+        dialog.setWindowTitle(title)
+        dialog.setText(text)
+        if informative_text:
+            dialog.setInformativeText(informative_text)
+        dialog.setStandardButtons(QtWidgets.QMessageBox.StandardButton.Ok)
+
+        self._active_dialog_keys.add(dialog_key)
+        try:
+            dialog.exec()
+        finally:
+            self._active_dialog_keys.discard(dialog_key)
+            self._dialog_last_shown_at[dialog_key] = time.monotonic()
+
+        return True
+
+    def _show_error_dialog(
+        self,
+        title: str,
+        brief: str,
+        details: str,
+        dialog_key: Optional[str] = None,
+    ) -> None:
         """显示可复制错误详情的对话框"""
+        key = dialog_key or f"error:{title}:{brief}"
+        now = time.monotonic()
+        if key in self._active_dialog_keys:
+            self._log("UI", f"Suppress repeated error dialog while open: {key}")
+            return
+        last_shown = self._dialog_last_shown_at.get(key)
+        if last_shown is not None and (now - last_shown) < self._dialog_suppression_window_s:
+            self._log("UI", f"Suppress repeated error dialog within cooldown: {key}")
+            return
+
         dialog = QtWidgets.QMessageBox()
         dialog.setIcon(QtWidgets.QMessageBox.Icon.Critical)
         dialog.setWindowTitle("错误")
@@ -3970,7 +4276,12 @@ class AsrController(QtCore.QObject):
         # 添加复制按钮
         copy_btn = dialog.addButton("复制错误信息", QtWidgets.QMessageBox.ButtonRole.ActionRole)
 
-        dialog.exec()
+        self._active_dialog_keys.add(key)
+        try:
+            dialog.exec()
+        finally:
+            self._active_dialog_keys.discard(key)
+            self._dialog_last_shown_at[key] = time.monotonic()
 
         if dialog.clickedButton() == copy_btn:
             clipboard = QtWidgets.QApplication.clipboard()
@@ -3979,12 +4290,14 @@ class AsrController(QtCore.QObject):
                 clipboard.setText(full_error)
 
     def _force_close(self) -> None:
+        self._reset_hotkey_state()
         self._pending_close_timer.stop()
         self._connecting = False
         self._connected = False
         self._pending_close_after_last = False
         self._recording_before_connected = False
         self._stop_pending_after_connect = False
+        self._clear_pending_connection()
         self._pre_connect_buffer.clear()
         try:
             self.ws.close_ws()
@@ -4214,7 +4527,12 @@ def main() -> int:
     index_path = os.path.join(web_dir, "index.html")
 
     if not os.path.exists(index_path):
-        QtWidgets.QMessageBox.critical(None, "错误", f"找不到前端资源: {index_path}")
+        controller._show_message_box_once(
+            f"startup:web-missing:{index_path}",
+            QtWidgets.QMessageBox.Icon.Critical,
+            "错误",
+            f"找不到前端资源: {index_path}",
+        )
         controller.shutdown()
         return 1
 
