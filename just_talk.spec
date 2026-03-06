@@ -246,7 +246,7 @@ else:
             icon='icon.icns' if os.path.exists('icon.icns') else None,
             bundle_identifier='com.justtalk.app',
             info_plist={
-                'CFBundleShortVersionString': '0.1.4',
+                'CFBundleShortVersionString': '0.1.6',
                 'CFBundleIconFile': 'icon.icns',
                 'NSMicrophoneUsageDescription': '需要麦克风权限进行语音识别',
                 'NSAppleEventsUsageDescription': '需要辅助功能权限实现全局快捷键',
